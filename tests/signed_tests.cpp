@@ -450,6 +450,20 @@ private slots:
         QCOMPARE(items.items().at(row).x, 512.0);
     }
 
+    void movingBetweenPagesKeepsTheItem() {
+        ItemModel items;
+        items.setPageSizes({QSizeF(612, 792), QSizeF(200, 200)});
+        const int row = items.addText(0, 10, 10, "Hello", 12);
+        items.moveToPage(row, 1);
+        QCOMPARE(items.items().at(row).page, 1);
+        QVERIFY(items.items().at(row).x >= 0);
+        QVERIFY(items.items().at(row).x + items.items().at(row).size().width() <= 200.001);
+        items.undo();
+        QCOMPARE(items.items().at(row).page, 0);
+        items.moveToPage(row, 5);
+        QCOMPARE(items.items().at(row).page, 0);
+    }
+
     void scalingKeepsTheShape() {
         ItemModel items;
         items.setPageSizes({QSizeF(612, 792)});

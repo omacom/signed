@@ -157,6 +157,19 @@ void ItemModel::nudge(int row, qreal dx, qreal dy) {
     move(row, m_items.at(row).x + dx, m_items.at(row).y + dy);
 }
 
+void ItemModel::moveToPage(int row, int page) {
+    if (row < 0 || row >= m_items.size() || page < 0 || page >= m_pageSizes.size())
+        return;
+    Item item = m_items.at(row);
+    if (item.page == page)
+        return;
+    item.page = page;
+    clamp(item);
+    record();
+    m_items[row] = item;
+    changed(row);
+}
+
 // Scaling keeps the aspect ratio and the top-left corner, and never grows an
 // item past the edge of its page.
 void ItemModel::resize(int row, qreal width) {

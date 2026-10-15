@@ -264,6 +264,8 @@ ApplicationWindow {
     Shortcut { sequence: "Shift+Right"; context: Qt.ApplicationShortcut; enabled: win.canEdit && win.selected >= 0; onActivated: backend.items.nudge(win.selected, 10, 0) }
     Shortcut { sequence: "Shift+Up"; context: Qt.ApplicationShortcut; enabled: win.canEdit && win.selected >= 0; onActivated: backend.items.nudge(win.selected, 0, -10) }
     Shortcut { sequence: "Shift+Down"; context: Qt.ApplicationShortcut; enabled: win.canEdit && win.selected >= 0; onActivated: backend.items.nudge(win.selected, 0, 10) }
+    Shortcut { sequence: "Alt+PgDown"; context: Qt.ApplicationShortcut; enabled: win.canEdit && win.selected >= 0; onActivated: backend.items.moveToPage(win.selected, backend.items.get(win.selected).page + 1) }
+    Shortcut { sequence: "Alt+PgUp"; context: Qt.ApplicationShortcut; enabled: win.canEdit && win.selected >= 0; onActivated: backend.items.moveToPage(win.selected, backend.items.get(win.selected).page - 1) }
     Shortcut { sequence: "["; context: Qt.ApplicationShortcut; enabled: win.canEdit && win.selected >= 0; onActivated: { backend.items.scaleBy(win.selected, 1 / 1.1); backend.rememberSize(win.selected); } }
     Shortcut { sequence: "]"; context: Qt.ApplicationShortcut; enabled: win.canEdit && win.selected >= 0; onActivated: { backend.items.scaleBy(win.selected, 1.1); backend.rememberSize(win.selected); } }
     Shortcut { sequences: ["PgUp"]; context: Qt.ApplicationShortcut; enabled: win.canEdit; onActivated: win.goToPage(win.currentPage - 1) }
