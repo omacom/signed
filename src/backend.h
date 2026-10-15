@@ -56,6 +56,7 @@ public:
 
     Q_INVOKABLE void open();
     Q_INVOKABLE bool openUrl(const QUrl &url);
+    Q_INVOKABLE bool openWithPassword(const QString &password);
     Q_INVOKABLE void save();
     // Writes the signed copy; public so tests can save without a dialog.
     bool saveTo(const QString &target);
@@ -93,6 +94,7 @@ public:
 
 signals:
     void documentChanged();
+    void passwordRequired();
     void dirtyChanged();
     void noticeChanged();
     void lastSignatureChanged();
@@ -105,6 +107,7 @@ signals:
 
 private:
     void setNotice(const QString &notice);
+    bool openPath(const QString &path, const QString &password);
     void updatePreview();
     void import(const QString &path, const QString &password);
     qreal textSize() const;
@@ -117,6 +120,8 @@ private:
     QHash<int, QString> m_signatureNames;  // image id → the signature it came from
 
     QString m_path;
+    QString m_password;
+    QString m_pendingPath;
     QList<QSizeF> m_pageSizes;
     int m_generation = 0;
     int m_savedRevision = 0;

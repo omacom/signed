@@ -90,9 +90,11 @@ QList<Geometry> readGeometry(QPDF &pdf) {
     return result;
 }
 
-void openPdf(QPDF &pdf, const QString &path) {
+void openPdf(QPDF &pdf, const QString &path, const QString &password) {
     pdf.setSuppressWarnings(true);
-    pdf.processFile(QFile::encodeName(path).constData());
+    const QByteArray encoded = password.toUtf8();
+    pdf.processFile(QFile::encodeName(path).constData(),
+                    password.isEmpty() ? nullptr : encoded.constData());
 }
 
 QString describe(const std::exception &e) {
@@ -157,10 +159,10 @@ QList<int> writeOverlay(const QString &path, const QList<Geometry> &pages, const
 
 namespace Stamper {
 
-QList<QSizeF> pageSizes(const QString &source, QString *error) {
+QList<QSizeF> pageSizes(const QString &source, QString *error, const QString &password) {
     try {
         QPDF pdf;
-        openPdf(pdf, source);
+        openPdf(pdf, source, password);
         QList<QSizeF> sizes;
         for (const Geometry &g : readGeometry(pdf))
             sizes.append(g.displaySize());
@@ -172,7 +174,8 @@ QList<QSizeF> pageSizes(const QString &source, QString *error) {
     }
 }
 
-Result stamp(const QString &source, const QString &target, const QList<Stamp> &stamps) {
+Result stamp(const QString &source, const QString &target, const QList<Stamp> &stamps,
+             const QString &password) {
     Result result;
     const QFileInfo targetInfo(target);
     QTemporaryDir work;
@@ -188,7 +191,7 @@ Result stamp(const QString &source, const QString &target, const QList<Stamp> &s
 
     try {
         QPDF pdf;
-        openPdf(pdf, source);
+        openPdf(pdf, source, password);
         pdf.pushInheritedAttributesToPage();
         auto pages = QPDFPageDocumentHelper(pdf).getAllPages();
         QList<Geometry> geometries;

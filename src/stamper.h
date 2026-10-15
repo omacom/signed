@@ -30,8 +30,10 @@ struct Result {
 
 // The displayed size, in points, of every page — what poppler shows and what
 // stamp coordinates are relative to. Empty with an error if it can't be read.
-QList<QSizeF> pageSizes(const QString &source, QString *error = nullptr);
+QList<QSizeF> pageSizes(const QString &source, QString *error = nullptr,
+                       const QString &password = {});
 
-Result stamp(const QString &source, const QString &target, const QList<Stamp> &stamps);
+Result stamp(const QString &source, const QString &target, const QList<Stamp> &stamps,
+             const QString &password = {});
 
 }

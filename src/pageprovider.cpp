@@ -35,6 +35,10 @@ private:
         if (m_source->loadedGeneration != m_source->generation) {
             m_source->document = Poppler::Document::load(m_source->path);
             m_source->loadedGeneration = m_source->generation;
+            if (m_source->document && m_source->document->isLocked()) {
+                const QByteArray password = m_source->password.toUtf8();
+                m_source->document->unlock(password, password);
+            }
             if (m_source->document) {
                 m_source->document->setRenderHint(Poppler::Document::Antialiasing);
                 m_source->document->setRenderHint(Poppler::Document::TextAntialiasing);
@@ -69,10 +73,11 @@ PageProvider::~PageProvider() {
     m_pool.waitForDone();
 }
 
-void PageProvider::setDocument(const QString &path, int generation) {
+void PageProvider::setDocument(const QString &path, int generation, const QString &password) {
     // Waits for a render in progress, so the document is never swapped under it.
     QMutexLocker lock(&m_source->mutex);
     m_source->path = path;
+    m_source->password = password;
     m_source->generation = generation;
     m_source->document.reset();
     m_source->loadedGeneration = -1;

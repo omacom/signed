@@ -84,6 +84,16 @@ void Backend::open() {
 
 bool Backend::openUrl(const QUrl &url) {
     const QString path = url.isLocalFile() ? url.toLocalFile() : url.toString();
+    return openPath(path, {});
+}
+
+bool Backend::openWithPassword(const QString &password) {
+    if (m_pendingPath.isEmpty())
+        return false;
+    return openPath(m_pendingPath, password);
+}
+
+bool Backend::openPath(const QString &path, const QString &password) {
     const QString name = QFileInfo(path).fileName();
     if (!QFileInfo(path).isFile()) {
         setNotice(QStringLiteral("Can't find %1.").arg(name));
@@ -96,13 +106,20 @@ bool Backend::openUrl(const QUrl &url) {
         return false;
     }
     if (document->isLocked()) {
-        setNotice(QStringLiteral("%1 is password protected.").arg(name));
-        return false;
+        const QByteArray encoded = password.toUtf8();
+        if (password.isEmpty() || !document->unlock(encoded, encoded)) {
+            m_pendingPath = path;
+            setNotice(password.isEmpty()
+                ? QStringLiteral("%1 needs a password.").arg(name)
+                : QStringLiteral("That password did not open %1.").arg(name));
+            emit passwordRequired();
+            return false;
+        }
     }
     // Saving goes through qpdf, so make sure it can read the file too before
     // anyone spends time signing it.
     QString error;
-    if (Stamper::pageSizes(path, &error).isEmpty()) {
+    if (Stamper::pageSizes(path, &error, password).isEmpty()) {
         setNotice(QStringLiteral("Can't sign %1: %2").arg(name, error));
         return false;
     }
@@ -118,10 +135,12 @@ bool Backend::openUrl(const QUrl &url) {
     }
 
     m_path = QFileInfo(path).absoluteFilePath();
+    m_password = password;
+    m_pendingPath.clear();
     m_pageSizes = sizes;
     ++m_generation;
     if (m_pages)
-        m_pages->setDocument(m_path, m_generation);
+        m_pages->setDocument(m_path, m_generation, m_password);
     m_items.clear();
     m_items.setPageSizes(sizes);
     m_savedRevision = m_items.revision();
@@ -148,7 +167,7 @@ bool Backend::saveTo(const QString &target) {
     }
 
     const int revision = m_items.revision();
-    const Stamper::Result result = Stamper::stamp(m_path, target, m_items.stamps());
+    const Stamper::Result result = Stamper::stamp(m_path, target, m_items.stamps(), m_password);
     if (!result.error.isEmpty()) {
         setNotice(QStringLiteral("Couldn't save: %1").arg(result.error));
         return false;

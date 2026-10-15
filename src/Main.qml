@@ -698,6 +698,47 @@ ApplicationWindow {
         }
     }
 
+    Rectangle {
+        id: passwordDialog
+        visible: false
+        anchors.fill: parent
+        color: "#000000cc"
+        property string entry: ""
+        function ask() {
+            entry = "";
+            visible = true;
+            field.forceActiveFocus();
+        }
+        Column {
+            anchors.centerIn: parent
+            spacing: 12
+            width: 320
+            Text { text: "This PDF needs a password"; color: "white"; font.pixelSize: 16 }
+            TextField {
+                id: field
+                width: parent.width
+                echoMode: TextInput.Password
+                text: passwordDialog.entry
+                onTextChanged: passwordDialog.entry = text
+                onAccepted: passwordDialog.accept()
+            }
+            Row {
+                spacing: 8
+                Button { text: "Cancel"; onClicked: passwordDialog.visible = false }
+                Button { text: "Open"; onClicked: passwordDialog.accept() }
+            }
+        }
+        function accept() {
+            visible = false;
+            backend.openWithPassword(entry);
+        }
+    }
+
+    Connections {
+        target: backend
+        function onPasswordRequired() { passwordDialog.ask() }
+    }
+
     Confirm {
         id: confirm
         accent: win.accent

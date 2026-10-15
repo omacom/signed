@@ -80,7 +80,7 @@ Letter keys do nothing while you're typing.
 
 ## Limits
 
-- Password-protected PDFs can't be opened.
+- Password-protected PDFs open after you type the password. The signed copy is not encrypted.
 - Form fields aren't filled in as fields; place text over them instead.
 - Signatures come from images; there's no drawing with the mouse.
 - A digital seal is self-signed: it shows the file is unchanged, but it isn't a qualified electronic signature (QES).
