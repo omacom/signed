@@ -254,6 +254,7 @@ ApplicationWindow {
     Shortcut { sequences: ["Return", "Enter"]; context: Qt.ApplicationShortcut; enabled: win.canEdit && win.selected >= 0; onActivated: win.startEditing(win.selected) }
     Shortcut { sequences: ["Delete", "Backspace", "X"]; context: Qt.ApplicationShortcut; enabled: win.canEdit && win.selected >= 0; onActivated: win.removeSelected() }
     Shortcut { sequence: "Ctrl+D"; context: Qt.ApplicationShortcut; enabled: win.canEdit && win.selected >= 0; onActivated: win.selected = backend.items.duplicate(win.selected) }
+    Shortcut { sequence: "C"; context: Qt.ApplicationShortcut; enabled: win.canEdit && win.selected >= 0; onActivated: backend.items.center(win.selected) }
     Shortcut { sequence: "Escape"; context: Qt.ApplicationShortcut; enabled: !win.blocked && win.selected >= 0; onActivated: win.deselect() }
     Shortcut { sequence: "Escape"; context: Qt.ApplicationShortcut; enabled: win.helpVisible; onActivated: win.helpVisible = false }
     Shortcut { sequence: "Left"; context: Qt.ApplicationShortcut; enabled: win.canEdit && win.selected >= 0; onActivated: backend.items.nudge(win.selected, -1, 0) }
@@ -676,8 +677,9 @@ ApplicationWindow {
                             ["Enter", "Edit selected text", "Ctrl+Z", "Undo"],
                             ["Arrows", "Nudge 1 pt (Shift: 10 pt)", "Ctrl+Shift+Z", "Redo"],
                             ["[ / ]", "Smaller / larger", "Esc", "Deselect / stop editing"],
-                            ["Ctrl+D", "Duplicate", "Q", "Quit"],
-                            ["Delete", "Remove item", "?", "This list"]
+                            ["Ctrl+D", "Duplicate", "C", "Center on the page"],
+                            ["Delete", "Remove item", "Q", "Quit"],
+                            ["?", "This list", "", ""]
                         ]
                         delegate: Repeater {
                             required property var modelData
