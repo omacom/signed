@@ -113,6 +113,24 @@ Rectangle {
                         cache: false
                         mipmap: true
                     }
+                    MouseArea {
+                        anchors.fill: parent
+                        property var strokes: []
+                        property var stroke: []
+                        onPressed: function(mouse) {
+                            stroke = [{x: mouse.x / width, y: mouse.y / height}];
+                        }
+                        onPositionChanged: function(mouse) {
+                            if (!pressed)
+                                return;
+                            stroke.push({x: mouse.x / width, y: mouse.y / height});
+                            backend.previewDrawing(strokes.concat([stroke]));
+                        }
+                        onReleased: {
+                            strokes = strokes.concat([stroke]);
+                            backend.previewDrawing(strokes);
+                        }
+                    }
                 }
                 Label { text: "→"; color: "#8e8e93"; font.pixelSize: 20 }
                 Rectangle {

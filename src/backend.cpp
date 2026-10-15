@@ -3,6 +3,9 @@
 #include <QDate>
 #include <QDir>
 #include <QFileInfo>
+#include <QPainter>
+#include <QPainterPath>
+#include <QVariantMap>
 #include <QLocale>
 #include <QSet>
 
@@ -285,6 +288,36 @@ bool Backend::loadSignatureImage(const QString &path) {
     updatePreview();
     emit signatureImageReady();
     return true;
+}
+
+void Backend::previewDrawing(const QVariantList &strokes) {
+    QImage image(900, 360, QImage::Format_ARGB32);
+    image.fill(Qt::white);
+    QPainter painter(&image);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(Qt::black, 6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    for (const QVariant &strokeValue : strokes) {
+        QPainterPath path;
+        bool started = false;
+        for (const QVariant &pointValue : strokeValue.toList()) {
+            const QVariantMap point = pointValue.toMap();
+            const QPointF at(point.value(QStringLiteral("x")).toReal() * image.width(),
+                             point.value(QStringLiteral("y")).toReal() * image.height());
+            if (!started) {
+                path.moveTo(at);
+                started = true;
+            } else {
+                path.lineTo(at);
+            }
+        }
+        if (started)
+            painter.drawPath(path);
+    }
+    m_previewSource = image;
+    if (m_previewName.isEmpty() && m_signatures->count() == 0)
+        m_previewName = QStringLiteral("Signature");
+    updatePreview();
+    emit signatureImageReady();
 }
 
 void Backend::setPreviewThreshold(qreal threshold) {

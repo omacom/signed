@@ -82,7 +82,7 @@ Letter keys do nothing while you're typing.
 
 - Password-protected PDFs can't be opened.
 - Form fields aren't filled in as fields; place text over them instead.
-- Signatures come from images; there's no drawing with the mouse.
+- You can draw a signature in the add dialog, or start from a scan or a photo.
 - A digital seal is self-signed: it shows the file is unchanged, but it isn't a qualified electronic signature (QES).
 
 ## Requirements

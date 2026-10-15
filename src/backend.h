@@ -90,6 +90,8 @@ public:
     Q_INVOKABLE void cancelImport();
 
     Q_INVOKABLE bool loadSignatureImage(const QString &path);
+    // Strokes are lists of {x, y} in 0..1 across the pad. They become the preview.
+    Q_INVOKABLE void previewDrawing(const QVariantList &strokes);
 
 signals:
     void documentChanged();
