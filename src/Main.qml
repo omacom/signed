@@ -248,6 +248,7 @@ ApplicationWindow {
     Shortcut { sequences: [StandardKey.Open]; context: Qt.ApplicationShortcut; enabled: !win.blocked; onActivated: win.openPdf() }
     Shortcut { sequences: [StandardKey.Save]; context: Qt.ApplicationShortcut; enabled: backend.hasDocument && !win.blocked; onActivated: { win.finishEditing(); backend.save(); } }
     Shortcut { sequence: "S"; context: Qt.ApplicationShortcut; enabled: win.canEdit; onActivated: win.placeLastSignature() }
+    Shortcut { sequence: "I"; context: Qt.ApplicationShortcut; enabled: win.canEdit; onActivated: win.placeSignature("Initials") }
     Shortcut { sequence: "Shift+S"; context: Qt.ApplicationShortcut; enabled: !win.typing && !win.blocked; onActivated: win.openSignatureMenu() }
     Shortcut { sequence: "T"; context: Qt.ApplicationShortcut; enabled: win.canEdit; onActivated: win.placeText() }
     Shortcut { sequence: "D"; context: Qt.ApplicationShortcut; enabled: win.canEdit; onActivated: win.placeDate() }
