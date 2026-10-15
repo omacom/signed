@@ -65,6 +65,7 @@ public:
     Q_INVOKABLE void resize(int row, qreal width);
     Q_INVOKABLE void scaleBy(int row, qreal factor);
     Q_INVOKABLE void nudge(int row, qreal dx, qreal dy);
+    Q_INVOKABLE void center(int row);
     Q_INVOKABLE void setText(int row, const QString &text);
     Q_INVOKABLE void remove(int row);
     Q_INVOKABLE int duplicate(int row);

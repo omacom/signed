@@ -151,6 +151,15 @@ void ItemModel::move(int row, qreal x, qreal y) {
     changed(row);
 }
 
+void ItemModel::center(int row) {
+    if (row < 0 || row >= m_items.size())
+        return;
+    const Item &item = m_items.at(row);
+    const QSizeF page = pageSize(item.page);
+    const QSizeF size = item.size();
+    move(row, (page.width() - size.width()) / 2.0, (page.height() - size.height()) / 2.0);
+}
+
 void ItemModel::nudge(int row, qreal dx, qreal dy) {
     if (row < 0 || row >= m_items.size())
         return;
