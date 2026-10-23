@@ -456,6 +456,47 @@ ApplicationWindow {
             onContentYChanged: win.updateCurrentPage()
             onHeightChanged: win.updateCurrentPage()
             onCountChanged: win.updateCurrentPage()
+            // A finger drag already flicks. A touchpad coast must not run on top of that.
+            onDraggingChanged: if (dragging) coast.stop()
+
+            // Touchpad coast. A mouse wheel has no pixelDelta and keeps the list's own
+            // one-notch scrolling. Ctrl stays on the zoom handler below.
+            property real coastVelocity: 0
+            WheelHandler {
+                id: touchpadCoast
+                acceptedDevices: PointerDevice.TouchPad
+                onWheel: (event) => {
+                    if ((event.modifiers & Qt.ControlModifier) || event.pixelDelta.y === 0)
+                        return
+                    var dy = event.pixelDelta.y
+                    var limit = Math.max(pageList.originY, pageList.originY + pageList.contentHeight - pageList.height)
+                    pageList.contentY = Math.max(pageList.originY, Math.min(limit, pageList.contentY - dy))
+                    pageList.coastVelocity = pageList.coastVelocity * 0.35 + (-dy / 16) * 0.65
+                    coast.restart()
+                    event.accepted = true
+                }
+            }
+            Timer {
+                id: coast
+                interval: 16
+                repeat: true
+                onTriggered: {
+                    if (Math.abs(pageList.coastVelocity) < 0.05) {
+                        stop()
+                        return
+                    }
+                    var limit = Math.max(pageList.originY, pageList.originY + pageList.contentHeight - pageList.height)
+                    var next = pageList.contentY + pageList.coastVelocity * 16
+                    if (next <= pageList.originY || next >= limit) {
+                        pageList.contentY = Math.max(pageList.originY, Math.min(limit, next))
+                        pageList.coastVelocity = 0
+                        stop()
+                        return
+                    }
+                    pageList.contentY = next
+                    pageList.coastVelocity *= 0.90
+                }
+            }
 
             // ListView pins delegates to x = 0, so each page centers itself
             // inside a full-width row.
