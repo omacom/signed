@@ -20,6 +20,13 @@ cd "$BUILD_DIR"
 make -j"$(nproc)"
 QT_QPA_PLATFORM=offscreen ./signed_tests "$@"
 
+# Real wheel events against Main.qml, independently of PDF decoding.
+mkdir -p "$ROOT/build/scroll-tests"
+cd "$ROOT/build/scroll-tests"
+"$QMAKE" "$ROOT/tests/scroll_tests.pro"
+make -j"$(nproc)"
+QT_QPA_PLATFORM=offscreen ./scroll_tests
+
 # The command line is tested as an agent uses it: the built binary, no display.
 "$ROOT/bin/build" >/dev/null
 python3 -m unittest discover -s "$ROOT/tests" -p 'test_*.py'
