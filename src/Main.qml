@@ -171,6 +171,7 @@ ApplicationWindow {
     function goToPage(page) {
         if (page < 0 || page >= backend.pageCount)
             return;
+        pageList.stopCoast();
         pageList.positionViewAtIndex(page, ListView.Beginning);
         currentPage = page;
     }
@@ -218,6 +219,7 @@ ApplicationWindow {
     Connections {
         target: backend
         function onDocumentChanged() {
+            pageList.stopCoast();
             win.zoom = 1;
             win.currentPage = 0;
             win.selected = -1;
@@ -419,6 +421,7 @@ ApplicationWindow {
 
         ListView {
             id: pageList
+            objectName: "pageList"
             anchors.left: thumbs.right
             anchors.leftMargin: thumbs.visible ? 1 : 0
             anchors.right: parent.right
@@ -440,6 +443,61 @@ ApplicationWindow {
             onContentYChanged: win.updateCurrentPage()
             onHeightChanged: win.updateCurrentPage()
             onCountChanged: win.updateCurrentPage()
+            // A finger drag already flicks. A touchpad coast must not run on top of that.
+            onDraggingChanged: if (dragging) stopCoast()
+
+            // Touchpad coast. A mouse wheel has no pixelDelta and keeps the list's own
+            // one-notch scrolling. Ctrl stays on the zoom handler below.
+            property real coastVelocity: 0
+            function stopCoast() {
+                coast.stop();
+                coastVelocity = 0;
+            }
+            WheelHandler {
+                id: touchpadCoast
+                acceptedDevices: PointerDevice.TouchPad
+                onActiveChanged: {
+                    if (active)
+                        pageList.stopCoast();
+                    else if (!pageList.dragging && Math.abs(pageList.coastVelocity) >= 0.05)
+                        coast.start();
+                }
+                onWheel: (event) => {
+                    if (event.modifiers & Qt.ControlModifier) {
+                        pageList.stopCoast();
+                        return;
+                    }
+                    if (event.pixelDelta.y === 0)
+                        return
+                    coast.stop()
+                    var dy = event.pixelDelta.y
+                    var limit = Math.max(pageList.originY, pageList.originY + pageList.contentHeight - pageList.height)
+                    pageList.contentY = Math.max(pageList.originY, Math.min(limit, pageList.contentY - dy))
+                    pageList.coastVelocity = pageList.coastVelocity * 0.35 + (-dy / 16) * 0.65
+                    event.accepted = true
+                }
+            }
+            Timer {
+                id: coast
+                interval: 16
+                repeat: true
+                onTriggered: {
+                    if (Math.abs(pageList.coastVelocity) < 0.05) {
+                        pageList.stopCoast()
+                        return
+                    }
+                    var limit = Math.max(pageList.originY, pageList.originY + pageList.contentHeight - pageList.height)
+                    var next = pageList.contentY + pageList.coastVelocity * 16
+                    if (next <= pageList.originY || next >= limit) {
+                        pageList.contentY = Math.max(pageList.originY, Math.min(limit, next))
+                        pageList.coastVelocity = 0
+                        stop()
+                        return
+                    }
+                    pageList.contentY = next
+                    pageList.coastVelocity *= 0.90
+                }
+            }
 
             // ListView pins delegates to x = 0, so each page centers itself
             // inside a full-width row.
