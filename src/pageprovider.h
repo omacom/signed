@@ -12,6 +12,7 @@
 struct RenderSource {
     QMutex mutex;
     QString path;
+    QString password;
     int generation = 0;
 };
 
@@ -23,7 +24,7 @@ public:
     PageProvider();
     ~PageProvider() override;
 
-    void setDocument(const QString &path, int generation);
+    void setDocument(const QString &path, int generation, const QString &password = {});
     QQuickImageResponse *requestImageResponse(const QString &id, const QSize &requestedSize) override;
 
 private:

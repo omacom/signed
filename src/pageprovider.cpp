@@ -29,18 +29,24 @@ public:
 private:
     void render() {
         QString path;
+        QByteArray password;
         {
             QMutexLocker lock(&m_source->mutex);
             // A request for a document that has since been replaced isn't worth rendering.
             if (m_generation != m_source->generation)
                 return;
             path = m_source->path;
+            password = m_source->password.toUtf8();
         }
         // A fresh document for every render: poppler 26.08 hangs (or aborts) when
         // a page is rendered again after another page of the same document has
         // been. Loading only parses the xref, a millisecond or two.
         std::unique_ptr<Poppler::Document> document = Poppler::Document::load(path);
-        if (!document || m_page < 0 || m_page >= document->numPages())
+        if (!document)
+            return;
+        if (document->isLocked())
+            document->unlock(password, password);
+        if (document->isLocked() || m_page < 0 || m_page >= document->numPages())
             return;
         document->setRenderHint(Poppler::Document::Antialiasing);
         document->setRenderHint(Poppler::Document::TextAntialiasing);
@@ -71,9 +77,10 @@ PageProvider::~PageProvider() {
     m_pool.waitForDone();
 }
 
-void PageProvider::setDocument(const QString &path, int generation) {
+void PageProvider::setDocument(const QString &path, int generation, const QString &password) {
     QMutexLocker lock(&m_source->mutex);
     m_source->path = path;
+    m_source->password = password;
     m_source->generation = generation;
 }
 
