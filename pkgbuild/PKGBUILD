@@ -1,7 +1,7 @@
 # Maintainer: David Heinemeier Hansson <david@hey.com>
 
 pkgname=signed
-pkgver=0.3.0
+pkgver=0.3.1
 pkgrel=1
 pkgdesc='Sign PDFs and fill them in with text and dates'
 arch=('x86_64' 'aarch64')

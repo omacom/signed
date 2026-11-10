@@ -34,7 +34,7 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
     app.setApplicationName("signed");
     app.setOrganizationName("signed");
-    app.setApplicationVersion("0.3.0");
+    app.setApplicationVersion("0.3.1");
 
     // Matches the window to signed.desktop, so the compositor (Wayland
     // app_id) and the launcher pick up the installed icon.

@@ -203,7 +203,7 @@ Result stamp(const QString &source, const QString &target, const QList<Stamp> &s
 
         QPDF overlay;
         if (!order.isEmpty())
-            openPdf(overlay, overlayPath);
+            openPdf(overlay, overlayPath, {});
         auto overlayPages = order.isEmpty() ? std::vector<QPDFPageObjectHelper>()
                                             : QPDFPageDocumentHelper(overlay).getAllPages();
 

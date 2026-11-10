@@ -8,17 +8,12 @@
 #include <functional>
 #include <memory>
 
-namespace Poppler { class Document; }
-
-// The open PDF, as poppler sees it. Owned by the render thread: only one
-// render runs at a time, and the document is replaced only between renders.
+// The open PDF, shared with the render thread.
 struct RenderSource {
     QMutex mutex;
     QString path;
     QString password;
     int generation = 0;
-    std::unique_ptr<Poppler::Document> document;
-    int loadedGeneration = -1;
 };
 
 // Renders pages off the GUI thread. Ids are "<generation>/<page>/<width>":
