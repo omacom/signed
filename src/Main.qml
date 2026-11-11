@@ -36,7 +36,11 @@ ApplicationWindow {
     readonly property bool typing: activeFocusItem !== null && activeFocusItem.cursorPosition !== undefined
     readonly property bool blocked: helpVisible || confirm.visible || addSignature.visible || signatureMenu.opened
     readonly property bool canEdit: backend.hasDocument && !typing && !blocked
-    readonly property var selectedItem: selected >= 0 && backend.items.count > selected ? backend.items.get(selected) : null
+    // get() returns a copy, so this reads the revision to pick up every change to it.
+    readonly property var selectedItem: {
+        backend.items.revision;
+        return selected >= 0 && backend.items.count > selected ? backend.items.get(selected) : null;
+    }
 
     readonly property var icons: ({
         signature: "M3 17 C6 11 8 8 9 9 C10 10 7 16 9 16 C11 16 12 11 14 11 C16 11 13 15 15 15 C17 15 18 13 21 12 M3 21 L21 21",
