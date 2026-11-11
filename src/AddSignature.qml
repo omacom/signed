@@ -15,6 +15,7 @@ Rectangle {
     property string error: ""
     property var certs: []             // the database's certificates: {id, name, organization}
     property string certId: ""         // "" is no seal, "new" makes a certificate on save
+    property bool certChosen: false    // picked in the menu, so typing a name no longer changes it
     property string importError: ""
     // The seal menu: off, the certificates there are, and the two ways to get
     // another.
@@ -31,6 +32,7 @@ Rectangle {
         nameField.text = backend.previewName;
         orgField.clear();
         // Replacing a signature keeps its seal; a new one starts without.
+        certChosen = false;
         refreshCerts(backend.signatureKey(backend.previewName));
         visible = true;
         nameField.forceActiveFocus();
@@ -182,7 +184,14 @@ Rectangle {
                 Layout.topMargin: 10
                 placeholderText: "Name"
                 Material.roundedScale: theme.radius
-                onTextChanged: dialog.error = ""
+                onTextChanged: {
+                    dialog.error = "";
+                    // Typing a saved signature's name brings its seal along, until one is picked.
+                    if (!dialog.certChosen) {
+                        const key = backend.signatureKey(text.trim());
+                        dialog.selectCert(dialog.certs.some(cert => cert.id === key) ? key : "");
+                    }
+                }
                 onAccepted: dialog.save()
                 Keys.onEscapePressed: dialog.close()
             }
@@ -230,6 +239,7 @@ Rectangle {
                         border.color: "#3a3a3c"
                     }
                     onActivated: {
+                        dialog.certChosen = true;
                         const id = currentValue;
                         if (id === "import") {
                             backend.importCertificate();
