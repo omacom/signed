@@ -389,7 +389,11 @@ ApplicationWindow {
                     id: page
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: 76
-                    height: Math.round(76 * backend.pageHeight(thumb.index) / backend.pageWidth(thumb.index))
+                    // Read again for every document, like the page beside it.
+                    height: {
+                        backend.generation;
+                        return Math.round(76 * backend.pageHeight(thumb.index) / backend.pageWidth(thumb.index));
+                    }
                     color: "white"
                     opacity: thumb.current ? 1 : 0.85
 

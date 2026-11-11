@@ -10,8 +10,14 @@ Item {
     property int renderWidth: 0
     signal backgroundPressed()
 
-    width: Math.round(backend.pageWidth(index) * viewScale)
-    height: Math.round(backend.pageHeight(index) * viewScale)
+    // pageWidth() is a call QML can't watch, so the generation is read to
+    // measure again when a document with as many pages replaces this one.
+    readonly property size pageSize: {
+        backend.generation;
+        return Qt.size(backend.pageWidth(index), backend.pageHeight(index));
+    }
+    width: Math.round(pageSize.width * viewScale)
+    height: Math.round(pageSize.height * viewScale)
 
     // Re-render only once a zoom settles, in steps, so dragging the zoom
     // doesn't queue a render per frame.
@@ -32,12 +38,17 @@ Item {
     }
     Rectangle { anchors.fill: parent; color: "white" }
 
-    // The last finished render stays up while a sharper one loads behind it.
+    // The last finished render stays up while a sharper one loads behind it,
+    // but never one of the document this replaced.
     Image {
         id: shown
         anchors.fill: parent
         cache: true
         smooth: true
+    }
+    Connections {
+        target: backend
+        function onDocumentChanged() { shown.source = ""; }
     }
     Image {
         id: loader
