@@ -41,7 +41,7 @@ public:
     int pageCount() const { return m_pageSizes.size(); }
     int generation() const { return m_generation; }
     qreal widestPage() const;
-    bool dirty() const { return m_items.revision() != m_savedRevision; }
+    bool dirty() const { return m_items.items() != m_savedItems; }
     QString notice() const { return m_notice; }
     ItemModel *items() { return &m_items; }
     SignatureLibrary *signatures() const { return m_signatures; }
@@ -119,7 +119,7 @@ private:
     QString m_path;
     QList<QSizeF> m_pageSizes;
     int m_generation = 0;
-    int m_savedRevision = 0;
+    QList<Item> m_savedItems;  // what the last signed copy holds; compared, so undoing back to it is clean
     QString m_notice;
 
     QImage m_previewSource;

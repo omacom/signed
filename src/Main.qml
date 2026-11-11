@@ -190,7 +190,7 @@ ApplicationWindow {
     }
     // Discarding placed items always asks first.
     function guard(title, action) {
-        if (backend.dirty && backend.items.count > 0)
+        if (backend.dirty)
             confirm.ask(title, "Your signatures and text haven't been saved to a signed copy yet.", "Discard", action);
         else
             action();
@@ -212,7 +212,7 @@ ApplicationWindow {
     }
 
     onClosing: (close) => {
-        if (quitting || !backend.dirty || backend.items.count === 0)
+        if (quitting || !backend.dirty)
             return;
         close.accepted = false;
         confirm.ask("Quit without saving?", "Your signatures and text haven't been saved to a signed copy yet.", "Quit", () => {
@@ -305,7 +305,7 @@ ApplicationWindow {
                 Layout.maximumWidth: topBar.width - tools.width - 80
             }
             Rectangle {
-                visible: backend.dirty && backend.items.count > 0
+                visible: backend.dirty
                 width: 7
                 height: 7
                 radius: 3.5
@@ -559,7 +559,7 @@ ApplicationWindow {
                 let s = "Page " + (win.currentPage + 1) + " of " + backend.pageCount;
                 if (items > 0)
                     s += " · " + items + (items === 1 ? " item" : " items");
-                if (backend.dirty && items > 0)
+                if (backend.dirty)
                     s += " · <font color=\"" + win.accent + "\">unsaved</font>";
                 if (win.zoom !== 1)
                     s += " · " + Math.round(win.zoom * 100) + "%";

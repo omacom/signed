@@ -536,6 +536,26 @@ private slots:
         QVERIFY(!backend.dirty());
     }
 
+    void undoingBackToTheSavedCopyIsClean() {
+        QTemporaryDir dir;
+        const QString source = dir.filePath("lease.pdf");
+        writeBasePdf(source, 1);
+        QSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        SignatureLibrary library(dir.filePath("signatures"));
+        Backend backend(nullptr, nullptr, &library, &settings);
+        QVERIFY(backend.openUrl(QUrl::fromLocalFile(source)));
+        const int row = backend.placeText(0, 100, 100, "Signed");
+        QVERIFY(backend.saveTo(dir.filePath("lease-signed.pdf")));
+
+        backend.items()->nudge(row, 10, 0);
+        QVERIFY(backend.dirty());
+        backend.items()->undo();
+        QVERIFY(!backend.dirty());
+        // Removing the last item is unsaved too, though nothing is left on the page.
+        backend.items()->remove(row);
+        QVERIFY(backend.dirty());
+    }
+
     void placedSignatureSurvivesLibraryDeletion() {
         QTemporaryDir dir;
         const QString source = dir.filePath("lease.pdf");

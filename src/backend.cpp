@@ -124,7 +124,7 @@ bool Backend::openUrl(const QUrl &url) {
         m_pages->setDocument(m_path, m_generation);
     m_items.clear();
     m_items.setPageSizes(sizes);
-    m_savedRevision = m_items.revision();
+    m_savedItems.clear();
     m_settings->setValue("folder", QFileInfo(m_path).absolutePath());
     setNotice({});
     emit documentChanged();
@@ -147,13 +147,13 @@ bool Backend::saveTo(const QString &target) {
         return false;
     }
 
-    const int revision = m_items.revision();
+    const QList<Item> items = m_items.items();
     const Stamper::Result result = Stamper::stamp(m_path, target, m_items.stamps());
     if (!result.error.isEmpty()) {
         setNotice(QStringLiteral("Couldn't save: %1").arg(result.error));
         return false;
     }
-    m_savedRevision = revision;
+    m_savedItems = items;
     emit dirtyChanged();
     emit saved();
 
