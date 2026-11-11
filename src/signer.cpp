@@ -231,6 +231,10 @@ Result sign(const QString &path, const QString &certNickname) {
         }
     }
 
+    // The temp file was created private; the signed copy keeps the
+    // permissions the unsigned one had.
+    QFile::setPermissions(tempName, QFile::permissions(path));
+
     // Swap the signed temp file into place in one step, so a crash leaves
     // either the unsigned copy or the signed one, never neither.
     if (std::rename(QFile::encodeName(tempName).constData(), QFile::encodeName(path).constData()) != 0) {

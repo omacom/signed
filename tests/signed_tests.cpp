@@ -604,10 +604,13 @@ private slots:
 
         // The signature is invisible: signing changes nothing on the page.
         const QImage before = render(target, 0);
+        const QFile::Permissions permissions = QFile::permissions(target);
         const Signer::Result result = Signer::sign(target, nickname);
         if (!result.ok)
             QFAIL(qPrintable(QStringLiteral("signing failed: %1").arg(result.error)));
         QCOMPARE(render(target, 0), before);
+        // Sealing doesn't make the copy private.
+        QCOMPARE(QFile::permissions(target), permissions);
 
         std::unique_ptr<Poppler::Document> document = Poppler::Document::load(target);
         QVERIFY(document);
