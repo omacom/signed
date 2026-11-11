@@ -33,6 +33,7 @@ enable_testing()
 add_executable(signed_tests tests/signed_tests.cpp)
 target_link_libraries(signed_tests PRIVATE signed_core Qt6::Test)
 add_test(NAME signed_tests COMMAND signed_tests)
+set_tests_properties(signed_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
 
 # The command line is tested as an agent uses it: the built binary, no
 # display. python3 is found when the tests run, so building needs none and a
