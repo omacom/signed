@@ -175,7 +175,10 @@ int removeSignature(const QStringList &arguments) {
         return fail("There's no signature named “" + name + "”. See: signed signatures");
     if (!library.remove(name))
         return fail("Couldn't remove “" + name + "”.");
-    QSettings().remove("signatureWidth/" + name);
+    // As the app does, so a signature added again under this name starts afresh.
+    QSettings settings;
+    settings.remove("signatureWidth/" + name);
+    settings.remove("signatureKey/" + name);
     if (command.isJson())
         print({{"removed", name}});
     else
