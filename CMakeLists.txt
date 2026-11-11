@@ -35,10 +35,8 @@ target_link_libraries(signed_tests PRIVATE signed_core Qt6::Test)
 add_test(NAME signed_tests COMMAND signed_tests)
 
 # The command line is tested as an agent uses it: the built binary, no
-# display. Python is only a check dependency, so building needs none.
-find_package(Python3 COMPONENTS Interpreter)
-if(Python3_FOUND)
-  add_test(NAME cli_tests
-    COMMAND Python3::Interpreter -m unittest discover -s ${CMAKE_SOURCE_DIR}/tests -p "test_*.py")
-  set_tests_properties(cli_tests PROPERTIES ENVIRONMENT SIGNED=$<TARGET_FILE:signed>)
-endif()
+# display. python3 is found when the tests run, so building needs none and a
+# missing one fails the run rather than skipping these.
+add_test(NAME cli_tests
+  COMMAND python3 -m unittest discover -s ${CMAKE_SOURCE_DIR}/tests -p "test_*.py")
+set_tests_properties(cli_tests PROPERTIES ENVIRONMENT SIGNED=$<TARGET_FILE:signed>)
