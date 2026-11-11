@@ -448,6 +448,11 @@ private slots:
         QCOMPARE(items.items().at(row).y, 742.0);
         items.move(row, 600, 0);
         QCOMPARE(items.items().at(row).x, 512.0);
+
+        // Text typed near the edge moves in rather than running off the page.
+        const int text = items.addText(0, 560, 100, "A", 12);
+        items.setText(text, "A line far too long to fit beside the right edge");
+        QVERIFY(items.items().at(text).x + items.items().at(text).size().width() <= 612);
     }
 
     void scalingKeepsTheShape() {
