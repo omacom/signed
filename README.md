@@ -94,7 +94,7 @@ Letter keys do nothing while you're typing.
 
 ## Build
 
-Uses Qt's own build tool, `qmake6`:
+With CMake:
 
 ```bash
 ./bin/build
