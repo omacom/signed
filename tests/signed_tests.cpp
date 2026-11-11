@@ -622,6 +622,27 @@ private slots:
         QCOMPARE(info.signatureStatus(), Poppler::SignatureValidationInfo::SignatureValid);
     }
 
+    void failedCertificateLeavesTheSignatureUnsaved() {
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        SignatureLibrary library(dir.filePath("signatures"));
+        Backend backend(nullptr, nullptr, &library, &settings);
+        QImage source(60, 30, QImage::Format_ARGB32);
+        source.fill(Qt::white);
+        QPainter(&source).fillRect(10, 10, 40, 10, Qt::black);
+        const QString path = dir.filePath("ink.png");
+        QVERIFY(source.save(path));
+        QVERIFY(backend.loadSignatureImage(path));
+
+        // Without certutil on the PATH, no certificate can be made.
+        const QByteArray searchPath = qgetenv("PATH");
+        qputenv("PATH", dir.path().toLocal8Bit());
+        const QString error = backend.saveSignature("Fresh", QString(), "new");
+        qputenv("PATH", searchPath);
+        QVERIFY(!error.isEmpty());
+        QVERIFY(!library.contains("Fresh"));
+    }
+
     void savingSealsOnlySignaturesGivenACertificate() {
         QTemporaryDir dir;
         const QString source = dir.filePath("lease.pdf");
@@ -666,8 +687,11 @@ private slots:
     }
     void twoKeysOnOnePageSignTwice() {
         QString second;
-        QCOMPARE(Signer::createCertificate(QStringLiteral("Other User"), QStringLiteral("Other Org"), &second), QString());
+        // Long enough that its length takes more than one byte, and it looks like attributes of its own.
+        const QString organization = QStringLiteral("Other Org, O=Elsewhere; OU=Nowhere ") + QString(120, QLatin1Char('x'));
+        QCOMPARE(Signer::createCertificate(QStringLiteral("Other User"), organization, &second), QString());
         QVERIFY(!second.isEmpty());
+        QCOMPARE(Signer::certificates().last().organization, organization);
 
         QTemporaryDir dir;
         const QString source = dir.filePath("lease.pdf");
