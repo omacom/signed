@@ -198,6 +198,16 @@ private slots:
         QVERIFY(translator.translate("Main", "Quit").isNull());
     }
 
+    void translatorFollowsAFirstPick() {
+        QTemporaryDir dir;
+        Translator translator(dir.path() + "/omarchy/language", dir.path());
+        QCOMPARE(translator.language(), QString("en"));
+        // Omarchy may create the file's directory only when a language is first picked.
+        QVERIFY(QDir(dir.path()).mkpath("omarchy"));
+        writeFile(dir.path() + "/omarchy/language", "da\n");
+        QTRY_COMPARE(translator.language(), QString("da"));
+    }
+
     void translatorPicksPluralForms() {
         QTemporaryDir dir;
         writeFile(dir.path() + "/language", "ru\n");
