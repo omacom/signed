@@ -24,6 +24,9 @@ QList<Certificate> certificates();
 // success, an error message otherwise.
 QString createCertificate(const QString &name, const QString &organization, QString *nickname = nullptr);
 
+// Deletes a certificate and its key from the app database.
+bool removeCertificate(const QString &nickname);
+
 // Imports an existing PKCS#12 file (.p12/.pfx, the export format of browsers
 // and CA tools) into the app database. The file's password is the only
 // password in this feature; a missing/wrong one reports needsPassword.

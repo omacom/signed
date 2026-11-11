@@ -322,8 +322,11 @@ QString Backend::saveSignature(const QString &name, const QString &organization,
     }
 
     const QString error = m_signatures->add(name, m_preview);
-    if (!error.isEmpty())
+    if (!error.isEmpty()) {
+        if (certId == QLatin1String("new"))
+            Signer::removeCertificate(bound);
         return error;
+    }
     // A replaced signature should start at its new natural size.
     m_settings->remove("signatureWidth/" + name.trimmed());
     if (bound.isEmpty())

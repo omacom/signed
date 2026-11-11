@@ -129,6 +129,15 @@ QString createCertificate(const QString &name, const QString &organization, QStr
     return {};
 }
 
+bool removeCertificate(const QString &nickname) {
+    if (!hasDatabase())
+        return false;
+    QProcess process;
+    process.start(QStringLiteral("certutil"), {QStringLiteral("-F"), QStringLiteral("-d"),
+                                               QStringLiteral("sql:") + databaseDir(), QStringLiteral("-n"), nickname});
+    return process.waitForFinished(30000) && process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
+}
+
 QString importCertificate(const QString &path, const QString &password,
                           bool *needsPassword, QString *nickname) {
     if (const QString failure = ensureBackend(true); !failure.isEmpty())

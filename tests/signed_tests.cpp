@@ -664,6 +664,16 @@ private slots:
         qputenv("PATH", searchPath);
         QVERIFY(!error.isEmpty());
         QVERIFY(!library.contains("Fresh"));
+
+        // Nor does a signature that can't be saved leave its new certificate behind.
+        const int before = Signer::certificates().size();
+        QVERIFY(QDir().mkpath(library.directory()));
+        QVERIFY(QFile::setPermissions(library.directory(), QFile::ReadOwner | QFile::ExeOwner));
+        if (!QFileInfo(library.directory()).isWritable()) {
+            QVERIFY(!backend.saveSignature("Fresh", QString(), "new").isEmpty());
+            QCOMPARE(Signer::certificates().size(), before);
+        }
+        QFile::setPermissions(library.directory(), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
     }
 
     void savingSealsOnlySignaturesGivenACertificate() {
