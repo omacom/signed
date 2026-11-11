@@ -307,6 +307,8 @@ QImage Backend::previewImage(const QString &which) const {
 QString Backend::saveSignature(const QString &name, const QString &organization, const QString &certId) {
     if (const QString invalid = m_signatures->validateName(name); !invalid.isEmpty())
         return invalid;
+    if (m_preview.isNull())
+        return QStringLiteral("There's no signature in that image.");
 
     // The dialog sends a certificate id, "new" for a fresh self-signed one
     // made for this signature (Common Name = name, Organization =

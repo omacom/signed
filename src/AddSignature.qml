@@ -239,12 +239,12 @@ Rectangle {
                         border.color: "#3a3a3c"
                     }
                     onActivated: {
-                        dialog.certChosen = true;
                         const id = currentValue;
                         if (id === "import") {
                             backend.importCertificate();
                             dialog.selectCert(dialog.certId);  // stays put until the import lands
                         } else {
+                            dialog.certChosen = true;
                             dialog.certId = id;
                         }
                     }
@@ -401,6 +401,6 @@ Rectangle {
             else
                 dialog.importError = message;
         }
-        function onCertificateImported(nickname) { passwordDialog.visible = false; dialog.importError = ""; dialog.refreshCerts(nickname); }
+        function onCertificateImported(nickname) { passwordDialog.visible = false; dialog.importError = ""; dialog.certChosen = true; dialog.refreshCerts(nickname); }
     }
 }
