@@ -129,7 +129,7 @@ void Translator::reload() {
     m_language = language;
     m_strings = strings;
     // Dates, numbers, and Qt's own day and month names follow the language
-    // too, and right-to-left languages mirror the window.
+    // too, and right-to-left languages set the layout direction.
     const QLocale locale = formatLocale(language);
     QLocale::setDefault(locale);
     QGuiApplication::setLayoutDirection(locale.textDirection());

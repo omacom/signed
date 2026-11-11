@@ -412,7 +412,7 @@ ApplicationWindow {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.top: page.bottom
                     anchors.topMargin: 6
-                    text: thumb.index + 1
+                    text: win.number(thumb.index + 1)
                     color: "#8e8e93"
                     font.pixelSize: 11
                 }
@@ -554,7 +554,7 @@ ApplicationWindow {
                 const items = backend.items.count;
                 let s = qsTr("Page %1 of %2").arg(win.number(win.currentPage + 1)).arg(win.number(backend.pageCount));
                 if (items > 0)
-                    s += " · " + qsTr("%n items", "", items);
+                    s += " · " + qsTr("%Ln items", "", items);
                 if (backend.dirty && items > 0)
                     s += " · <font color=\"" + win.accent + "\">" + qsTr("unsaved") + "</font>";
                 if (win.zoom !== 1)

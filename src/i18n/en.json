@@ -1,3 +1,3 @@
 {
-  "%n items": { "one": "%n item", "other": "%n items" }
+  "%Ln items": { "one": "%Ln item", "other": "%Ln items" }
 }

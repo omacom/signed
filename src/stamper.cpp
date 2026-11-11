@@ -135,7 +135,7 @@ QList<int> writeOverlay(const QString &path, const QList<Geometry> &pages, const
 
     QPainter painter(&writer);
     if (!painter.isActive())
-        throw std::runtime_error("Could not write the signature overlay.");
+        throw std::runtime_error(tr("Could not write the signature overlay.").toStdString());
     painter.setRenderHint(QPainter::LosslessImageRendering);
     painter.setRenderHint(QPainter::SmoothPixmapTransform);
 
@@ -144,7 +144,7 @@ QList<int> writeOverlay(const QString &path, const QList<Geometry> &pages, const
         if (!order.isEmpty()) {
             writer.setPageSize(pageSize(it.key()));
             if (!writer.newPage())
-                throw std::runtime_error("Could not add a page to the signature overlay.");
+                throw std::runtime_error(tr("Could not add a page to the signature overlay.").toStdString());
         }
         order.append(it.key());
         for (const Stamp &stamp : it.value()) {
