@@ -92,6 +92,14 @@ QRect bounds(const QImage &image, const std::function<bool(QColor)> &match) {
     return result;
 }
 
+// Whether the bytes still match the signature; the certificate check poppler
+// starts beside it is waited out, so no thread outlives the document.
+Poppler::SignatureValidationInfo::SignatureStatus signatureStatus(const Poppler::FormFieldSignature &signature) {
+    const auto status = signature.validateAsync(Poppler::FormFieldSignature::ValidateOptions()).first.signatureStatus();
+    signature.validateResult();
+    return status;
+}
+
 bool isRed(QColor c) { return c.red() > 200 && c.green() < 70 && c.blue() < 70; }
 bool isBlue(QColor c) { return c.blue() > 200 && c.red() < 70 && c.green() < 70; }
 
@@ -512,7 +520,7 @@ private slots:
         const QString source = dir.filePath("lease.pdf");
         writeBasePdf(source, 1);
         QFile::link(source, dir.filePath("alias.pdf"));
-        const QByteArray original = [&] { QFile f(source); f.open(QIODevice::ReadOnly); return f.readAll(); }();
+        const QByteArray original = [&] { QFile f(source); return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray(); }();
 
         QSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
         SignatureLibrary library(dir.filePath("signatures"));
@@ -613,9 +621,7 @@ private slots:
         const auto signatures = document->signatures();
         QCOMPARE(signatures.size(), 1);
         QCOMPARE(signatures.at(0)->signatureType(), Poppler::FormFieldSignature::AdbePkcs7detached);
-        const Poppler::SignatureValidationInfo info =
-            signatures.at(0)->validate(Poppler::FormFieldSignature::ValidateOptions());
-        QCOMPARE(info.signatureStatus(), Poppler::SignatureValidationInfo::SignatureValid);
+        QCOMPARE(signatureStatus(*signatures.at(0)), Poppler::SignatureValidationInfo::SignatureValid);
     }
 
     void savingSealsOnlySignaturesGivenACertificate() {
@@ -689,8 +695,7 @@ private slots:
         QCOMPARE(int(signatures.size()), 2);
         // The second pass appends to the file, so the first stays valid.
         for (const auto &signature : signatures)
-            QCOMPARE(signature->validate(Poppler::FormFieldSignature::ValidateOptions()).signatureStatus(),
-                     Poppler::SignatureValidationInfo::SignatureValid);
+            QCOMPARE(signatureStatus(*signature), Poppler::SignatureValidationInfo::SignatureValid);
     }
 
     void importingP12CertsAndSigningWithThem() {
@@ -726,9 +731,7 @@ private slots:
         QVERIFY(document);
         const auto signatures = document->signatures();
         QCOMPARE(signatures.size(), 1);
-        const Poppler::SignatureValidationInfo info =
-            signatures.at(0)->validate(Poppler::FormFieldSignature::ValidateOptions());
-        QCOMPARE(info.signatureStatus(), Poppler::SignatureValidationInfo::SignatureValid);
+        QCOMPARE(signatureStatus(*signatures.at(0)), Poppler::SignatureValidationInfo::SignatureValid);
     }
 };
 
