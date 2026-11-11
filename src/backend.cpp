@@ -338,7 +338,11 @@ QString Backend::saveSignature(const QString &name, const QString &organization,
 }
 
 void Backend::removeSignature(const QString &name) {
-    m_signatures->remove(name);
+    // Its size and seal go only with the image, so one that stays keeps them.
+    if (!m_signatures->remove(name)) {
+        setNotice(QStringLiteral("Couldn't delete “%1”.").arg(name));
+        return;
+    }
     m_settings->remove("signatureWidth/" + name);
     m_settings->remove("signatureKey/" + name);
     emit lastSignatureChanged();

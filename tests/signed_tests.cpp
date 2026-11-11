@@ -553,6 +553,25 @@ private slots:
         QVERIFY(!bounds(render(target, 0), isRed).isEmpty());
     }
 
+    void failedDeletionKeepsTheSeal() {
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        SignatureLibrary library(dir.filePath("signatures"));
+        QImage red(60, 30, QImage::Format_ARGB32);
+        red.fill(Qt::red);
+        QCOMPARE(library.add("David", red), QString());
+        settings.setValue("signatureKey/David", "some-certificate");
+
+        Backend backend(nullptr, nullptr, &library, &settings);
+        const auto writable = QFile::permissions(library.directory());
+        QVERIFY(QFile::setPermissions(library.directory(), QFile::ReadOwner | QFile::ExeOwner));
+        backend.removeSignature("David");
+        QFile::setPermissions(library.directory(), writable);
+        QVERIFY(library.contains("David"));
+        QCOMPARE(backend.signatureKey("David"), QString("some-certificate"));
+        QVERIFY(!backend.notice().isEmpty());
+    }
+
     void passwordProtectedPdfsAreRefused() {
         QTemporaryDir dir;
         const QString plain = dir.filePath("plain.pdf");
