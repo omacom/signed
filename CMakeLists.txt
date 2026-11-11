@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 project(signed LANGUAGES CXX)
 
-# C++20, which poppler-qt6's headers require.
+# C++20 for Item's defaulted operator==, as poppler-qt6's pkg-config flags ask too.
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
