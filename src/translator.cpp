@@ -81,12 +81,12 @@ QLocale Translator::formatLocale(const QString &language) {
 
 QString Translator::translate(const char *, const char *sourceText, const char *, int n) const {
     // A null string tells Qt there is no translation, so it shows the English.
-    const QJsonValue value = m_strings.value(QString::fromUtf8(sourceText));
+    const auto [code, value] = m_strings.value(QString::fromUtf8(sourceText));
     if (value.isString())
         return value.toString();
     if (value.isObject()) {
         const QJsonObject forms = value.toObject();
-        const QString form = forms.value(n < 0 ? "other" : pluralCategory(m_language, n)).toString();
+        const QString form = forms.value(n < 0 ? "other" : pluralCategory(code, n)).toString();
         return form.isEmpty() ? forms.value("other").toString() : form;
     }
     return {};
@@ -113,7 +113,7 @@ void Translator::reload() {
     // English first (it carries the plural forms of counted strings), then
     // the base language and the regional file over it (pt, then pt-BR), so a
     // missing string falls back toward English one step at a time.
-    QHash<QString, QJsonValue> strings;
+    QHash<QString, QPair<QString, QJsonValue>> strings;
     QStringList codes{"en", language.section('-', 0, 0), language};
     codes.removeDuplicates();
     for (const auto &code : codes) {
@@ -123,7 +123,7 @@ void Translator::reload() {
         const QJsonObject object = QJsonDocument::fromJson(catalog.readAll()).object();
         for (auto it = object.begin(); it != object.end(); ++it)
             if ((it.value().isString() && !it.value().toString().isEmpty()) || it.value().isObject())
-                strings.insert(it.key(), it.value());
+                strings.insert(it.key(), {code, it.value()});
     }
 
     m_language = language;

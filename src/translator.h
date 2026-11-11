@@ -4,6 +4,7 @@
 #include <QHash>
 #include <QJsonValue>
 #include <QLocale>
+#include <QPair>
 #include <QTimer>
 #include <QTranslator>
 
@@ -39,7 +40,8 @@ private:
     QString m_languageFile;
     QString m_catalogDirectory;
     QString m_language;
-    QHash<QString, QJsonValue> m_strings;
+    // Each string with the language of the catalog it came from, whose plural rules its forms follow.
+    QHash<QString, QPair<QString, QJsonValue>> m_strings;
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
 };

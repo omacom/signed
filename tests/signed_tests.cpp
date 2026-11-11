@@ -208,6 +208,12 @@ private slots:
         QCOMPARE(translator.translate("Main", "%n items", nullptr, 22), QString("%n элемента"));
         QCOMPARE(translator.translate("Main", "%n items", nullptr, 25), QString("%n элементов"));
         QCOMPARE(Translator::pluralCategory("ar", 11), QString("many"));
+
+        // A language without the string counts with English's rules, not its own.
+        writeFile(dir.path() + "/language", "ja\n");
+        writeFile(dir.path() + "/en.json", R"({"%n items": {"one": "%n item", "other": "%n items"}})");
+        Translator japanese(dir.path() + "/language", dir.path());
+        QCOMPARE(japanese.translate("Main", "%n items", nullptr, 1), QString("%n item"));
         QCOMPARE(Translator::pluralCategory("ja", 1), QString("other"));
     }
 
