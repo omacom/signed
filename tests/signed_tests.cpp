@@ -583,13 +583,14 @@ private slots:
 
     void createdKeySignsAndVerifies() {
         QString nickname;
-        QCOMPARE(Signer::createCertificate(QStringLiteral("Test User"), QString(), &nickname), QString());
+        // A comma or a leading # in a name is part of it, not subject syntax.
+        QCOMPARE(Signer::createCertificate(QStringLiteral("#1 Morgan, Ærø"), QString(), &nickname), QString());
         QVERIFY(!nickname.isEmpty());
         const QList<Signer::Certificate> certs = Signer::certificates();
         QCOMPARE(certs.size(), 1);
         QCOMPARE(certs.at(0).nickname, nickname);
-        QCOMPARE(certs.at(0).commonName, QStringLiteral("Test User"));
-        QCOMPARE(certs.at(0).organization, QStringLiteral("Test User"));
+        QCOMPARE(certs.at(0).commonName, QStringLiteral("#1 Morgan, Ærø"));
+        QCOMPARE(certs.at(0).organization, QStringLiteral("#1 Morgan, Ærø"));
 
         QTemporaryDir dir;
         const QString source = dir.filePath("lease.pdf");
@@ -641,7 +642,7 @@ private slots:
         settings.setValue("signatureKey/David", Signer::certificates().at(0).nickname);
         const QString sealed = dir.filePath("sealed.pdf");
         QVERIFY(backend.saveTo(sealed));
-        QVERIFY(backend.notice().contains(QStringLiteral("signed with Test User")));
+        QVERIFY(backend.notice().contains(QStringLiteral("signed with #1 Morgan, Ærø")));
         QCOMPARE(int(Poppler::Document::load(sealed)->signatures().size()), 1);
     }
     void savingASignatureWithoutACertificateUnbindsIt() {
