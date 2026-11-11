@@ -22,6 +22,7 @@
 #include "stamper.h"
 #include "textlayout.h"
 #include "theme.h"
+#include "translator.h"
 
 namespace {
 
@@ -100,6 +101,12 @@ Poppler::SignatureValidationInfo::SignatureStatus signatureStatus(const Poppler:
     return status;
 }
 
+void writeFile(const QString &path, const QByteArray &contents) {
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(contents);
+}
+
 bool isRed(QColor c) { return c.red() > 200 && c.green() < 70 && c.blue() < 70; }
 bool isBlue(QColor c) { return c.blue() > 200 && c.red() < 70 && c.green() < 70; }
 
@@ -169,6 +176,39 @@ private slots:
         Theme theme(dir.path());
         QCOMPARE(theme.accent(), QString("#112233"));
         QCOMPARE(theme.accentForeground(), QString("white"));
+    }
+
+    void translatorFallsBackToEnglish() {
+        QTemporaryDir dir;
+        Translator translator(dir.path() + "/language", dir.path());
+        QCOMPARE(translator.language(), QString("en"));
+        QVERIFY(translator.translate("Main", "Save").isNull());
+    }
+
+    void translatorFollowsTheLanguageFile() {
+        QTemporaryDir dir;
+        writeFile(dir.path() + "/language", "pt-BR\n");
+        writeFile(dir.path() + "/pt.json", R"({"Save": "Guardar", "Open": "Abrir"})");
+        writeFile(dir.path() + "/pt-BR.json", R"({"Save": "Salvar"})");
+
+        Translator translator(dir.path() + "/language", dir.path());
+        QCOMPARE(translator.language(), QString("pt-BR"));
+        QCOMPARE(translator.translate("Main", "Save"), QString("Salvar"));
+        QCOMPARE(translator.translate("Main", "Open"), QString("Abrir"));
+        QVERIFY(translator.translate("Main", "Quit").isNull());
+    }
+
+    void translatorPicksPluralForms() {
+        QTemporaryDir dir;
+        writeFile(dir.path() + "/language", "ru\n");
+        writeFile(dir.path() + "/ru.json", R"({"%n items": {"one": "%n элемент", "few": "%n элемента", "many": "%n элементов", "other": "%n элемента"}})");
+
+        Translator translator(dir.path() + "/language", dir.path());
+        QCOMPARE(translator.translate("Main", "%n items", nullptr, 21), QString("%n элемент"));
+        QCOMPARE(translator.translate("Main", "%n items", nullptr, 22), QString("%n элемента"));
+        QCOMPARE(translator.translate("Main", "%n items", nullptr, 25), QString("%n элементов"));
+        QCOMPARE(Translator::pluralCategory("ar", 11), QString("many"));
+        QCOMPARE(Translator::pluralCategory("ja", 1), QString("other"));
     }
 
     void stampLandsWherePlaced_data() {

@@ -8,7 +8,7 @@ Rectangle {
 
     property string title: ""
     property string message: ""
-    property string confirmText: "OK"
+    property string confirmText: qsTr("OK")
     property var action: null
     property color accent: "#FFD60A"
     property color accentForeground: "black"
@@ -67,7 +67,7 @@ Rectangle {
                 anchors.right: parent.right
                 spacing: 10
                 BarButton {
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     accent: confirm.accent
                     onClicked: confirm.cancel()
                 }

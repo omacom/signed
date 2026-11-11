@@ -1,5 +1,6 @@
 #include "stamper.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
 #include <QHash>
@@ -21,6 +22,10 @@
 #include "textlayout.h"
 
 namespace {
+
+QString tr(const char *text) {
+    return QCoreApplication::translate("Stamper", text);
+}
 
 // Where a page's visible area sits in its own user space, and how it's turned
 // for display. Mirrors what poppler shows: the CropBox (clipped to the
@@ -98,7 +103,7 @@ void openPdf(QPDF &pdf, const QString &path) {
 QString describe(const std::exception &e) {
     const QString message = QString::fromUtf8(e.what());
     if (message.contains(QLatin1String("password"), Qt::CaseInsensitive))
-        return QStringLiteral("This PDF is password protected.");
+        return tr("This PDF is password protected.");
     return message;
 }
 
@@ -177,13 +182,13 @@ Result stamp(const QString &source, const QString &target, const QList<Stamp> &s
     const QFileInfo targetInfo(target);
     QTemporaryDir work;
     if (!work.isValid())
-        return {QStringLiteral("Could not create a temporary directory."), {}};
+        return {tr("Could not create a temporary directory."), {}};
 
     // The finished file is written beside the target and renamed over it, so a
     // failure never leaves a half-written or clobbered file behind.
     QTemporaryFile output(targetInfo.absoluteDir().filePath(QStringLiteral(".%1.XXXXXX").arg(targetInfo.fileName())));
     if (!output.open())
-        return {QStringLiteral("Can't write to %1.").arg(targetInfo.absolutePath()), {}};
+        return {tr("Can't write to %1.").arg(targetInfo.absolutePath()), {}};
     output.close();
 
     try {
@@ -238,7 +243,7 @@ Result stamp(const QString &source, const QString &target, const QList<Stamp> &s
         writer.write();
 
         if (pdf.anyWarnings())
-            result.warning = QStringLiteral("The original PDF had problems that were repaired in the signed copy.");
+            result.warning = tr("The original PDF had problems that were repaired in the signed copy.");
     } catch (const std::exception &e) {
         QFile::remove(output.fileName());
         return {describe(e), {}};
@@ -246,7 +251,7 @@ Result stamp(const QString &source, const QString &target, const QList<Stamp> &s
 
     if (std::rename(QFile::encodeName(output.fileName()).constData(), QFile::encodeName(target).constData()) != 0) {
         QFile::remove(output.fileName());
-        return {QStringLiteral("Could not save %1.").arg(targetInfo.fileName()), {}};
+        return {tr("Could not save %1.").arg(targetInfo.fileName()), {}};
     }
     output.setAutoRemove(false);
     QFile(target).setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |

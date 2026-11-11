@@ -99,11 +99,11 @@ QString SignatureLibrary::pathFor(const QString &name) const {
 QString SignatureLibrary::validateName(const QString &name) const {
     const QString trimmed = name.trimmed();
     if (trimmed.isEmpty())
-        return QStringLiteral("Give the signature a name.");
+        return tr("Give the signature a name.");
     if (trimmed.startsWith(QLatin1Char('.')) || trimmed.contains(QLatin1Char('/')) || trimmed.contains(QChar(0)))
-        return QStringLiteral("A name can't start with a dot or contain a slash.");
+        return tr("A name can't start with a dot or contain a slash.");
     if (trimmed.size() > 60)
-        return QStringLiteral("That name is too long.");
+        return tr("That name is too long.");
     return {};
 }
 
@@ -133,13 +133,13 @@ QString SignatureLibrary::add(const QString &name, const QImage &image) {
     if (!error.isEmpty())
         return error;
     if (image.isNull())
-        return QStringLiteral("There's no signature in that image.");
+        return tr("There's no signature in that image.");
     if (!QDir().mkpath(m_directory))
-        return QStringLiteral("Can't create %1.").arg(m_directory);
+        return tr("Can't create %1.").arg(m_directory);
 
     QSaveFile file(pathFor(name.trimmed()));
     if (!file.open(QIODevice::WriteOnly) || !image.save(&file, "PNG") || !file.commit())
-        return QStringLiteral("Couldn't save the signature: %1").arg(file.errorString());
+        return tr("Couldn't save the signature: %1").arg(file.errorString());
     reload();
     return {};
 }
@@ -163,7 +163,7 @@ QImage SignatureLibrary::load(const QString &path, QString *error) {
     reader.setAutoTransform(true);  // phone photos are often stored sideways with an EXIF turn
     QImage image = reader.read();
     if (image.isNull() && error)
-        *error = QStringLiteral("Can't read %1: %2").arg(QFileInfo(path).fileName(), reader.errorString());
+        *error = tr("Can't read %1: %2").arg(QFileInfo(path).fileName(), reader.errorString());
     return image;
 }
 
