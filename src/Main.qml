@@ -196,9 +196,11 @@ ApplicationWindow {
             action();
     }
     function openPdf(url) {
+        // Text being edited is finished first, which closes its undo step and
+        // counts it as unsaved work.
+        finishEditing();
         guard("Open another PDF?", () => {
             selected = -1;
-            editingRow = -1;
             if (url)
                 backend.openUrl(url);
             else
