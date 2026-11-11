@@ -4,7 +4,7 @@
 #include <QHash>
 #include <QJsonValue>
 #include <QLocale>
-#include <QPair>
+#include <QReadWriteLock>
 #include <QTimer>
 #include <QTranslator>
 
@@ -21,9 +21,10 @@ class Translator : public QTranslator {
 public:
     explicit Translator(const QString &languageFile = {}, const QString &catalogDirectory = ":/i18n",
                         QObject *parent = nullptr);
+    ~Translator() override;
 
-    QString language() const { return m_language; }
-    bool isEmpty() const override { return m_strings.isEmpty(); }
+    QString language() const;
+    bool isEmpty() const override;
     QString translate(const char *context, const char *sourceText, const char *disambiguation = nullptr,
                       int n = -1) const override;
 
@@ -39,9 +40,18 @@ private:
 
     QString m_languageFile;
     QString m_catalogDirectory;
+    // A translation, and the language whose catalog it came from, so a
+    // counted string falling back to English takes English plural rules.
+    struct Entry {
+        QJsonValue value;
+        QString language;
+    };
+
+    // translate() also runs on worker threads (an app's background errors),
+    // while a language switch replaces the catalog on the GUI thread.
+    mutable QReadWriteLock m_lock;
     QString m_language;
-    // Each string with the language of the catalog it came from, whose plural rules its forms follow.
-    QHash<QString, QPair<QString, QJsonValue>> m_strings;
+    QHash<QString, Entry> m_strings;
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
 };
