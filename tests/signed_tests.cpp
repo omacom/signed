@@ -565,6 +565,10 @@ private slots:
         Backend backend(nullptr, nullptr, &library, &settings);
         const auto writable = QFile::permissions(library.directory());
         QVERIFY(QFile::setPermissions(library.directory(), QFile::ReadOwner | QFile::ExeOwner));
+        if (QFileInfo(library.directory()).isWritable()) {
+            QFile::setPermissions(library.directory(), writable);
+            QSKIP("Root can delete from a read-only directory.");
+        }
         backend.removeSignature("David");
         QFile::setPermissions(library.directory(), writable);
         QVERIFY(library.contains("David"));
