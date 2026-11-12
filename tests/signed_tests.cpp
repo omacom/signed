@@ -247,6 +247,15 @@ QStringList placeholders(const QString &text) {
     return found;
 }
 
+// Omarchy's 49 translations (default/i18n/locales.json), as the sync's LANGUAGES has them.
+const QStringList &languageCodes() {
+    static const QStringList codes{"ar", "bg", "bn", "ca", "cs", "da", "de", "el", "es-MX", "et", "fa", "fi", "fil",
+                                   "fr", "ga", "he", "hi", "hr", "hu", "id", "is", "it", "ja", "ko", "lt", "lv", "ms",
+                                   "nl", "no", "pl", "pt", "pt-BR", "ro", "ru", "si", "sk", "sl", "sr", "sv", "sw",
+                                   "ta", "th", "tr", "uk", "ur", "uz", "vi", "zh-CN", "zh-TW"};
+    return codes;
+}
+
 // What's wrong with the translations in `folder`, measured against its
 // en.json: an unknown language, empty or broken translations, and plural
 // forms that don't fit the language's rule. A string a catalog lacks, or one
@@ -254,10 +263,7 @@ QStringList placeholders(const QString &text) {
 // (scripts/i18n-sync.py), not a problem: the window shows the English
 // meanwhile, so a change to the English never waits on 49 languages.
 QStringList catalogProblems(const QString &folder) {
-    static const QStringList codes{"ar", "bg", "bn", "ca", "cs", "da", "de", "el", "es-MX", "et", "fa", "fi", "fil",
-                                   "fr", "ga", "he", "hi", "hr", "hu", "id", "is", "it", "ja", "ko", "lt", "lv", "ms",
-                                   "nl", "no", "pl", "pt", "pt-BR", "ro", "ru", "si", "sk", "sl", "sr", "sv", "sw",
-                                   "ta", "th", "tr", "uk", "ur", "uz", "vi", "zh-CN", "zh-TW"};
+    const QStringList &codes = languageCodes();
     QStringList problems;
     const QJsonObject english = readCatalog(folder + "/en.json", &problems);
     for (const QFileInfo &file : QDir(folder).entryInfoList({"*.json"}, QDir::Files)) {
@@ -453,7 +459,12 @@ private slots:
     }
 
     void catalogsMatchTheEnglishOne() {
-        const QStringList problems = catalogProblems(sourceFolder() + "/i18n");
+        QStringList problems = catalogProblems(sourceFolder() + "/i18n");
+        // Every language has its catalog, empty until the sync fills it: the
+        // sync only changes catalogs that exist, and only these are compiled in.
+        for (const QString &code : languageCodes())
+            if (!QFileInfo::exists(sourceFolder() + "/i18n/" + code + ".json"))
+                problems << code + ".json: missing";
         QVERIFY2(problems.isEmpty(), qPrintable(problems.join('\n')));
     }
 

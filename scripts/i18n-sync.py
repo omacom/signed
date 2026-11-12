@@ -229,7 +229,7 @@ def cmd_translate(args):
     write_translations(code, catalog)
     failed = 0
     # One batch at a time, each seeing what the earlier ones chose, so a
-    # term like "Trash" comes out the same throughout.
+    # term like "seal" comes out the same throughout.
     for start in range(0, len(pending), BATCH):
         batch = {key: source[key] for key in pending[start:start + BATCH]}
         reference = {key: catalog[key] for key in list(catalog)[-REFERENCE:]}

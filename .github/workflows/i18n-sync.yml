@@ -138,14 +138,12 @@ jobs:
           EXPECTED: ${{ needs.prepare.outputs.locales }}
         run: python3 scripts/i18n-sync.py collect "$RUNNER_TEMP/translations" --expected "$(jq -r 'join(",")' <<< "$EXPECTED")"
       - name: Validate with the catalog tests
-        # Built against Arch's Qt, with the dependencies the package's
-        # PKGBUILD in omarchy-pkgs lists, like Signed's own CI.
+        # Built against Arch's Qt, like Signed's own CI. The packages are
+        # listed here rather than read from omarchy-pkgs' PKGBUILD, so no
+        # code from outside this repository runs beside what land trusts.
         run: |
-          curl -fsSL https://raw.githubusercontent.com/omacom/omarchy-pkgs/master/pkgbuilds/signed/PKGBUILD -o "$RUNNER_TEMP/PKGBUILD"
-          docker run --rm -v "$PWD:/signed" -v "$RUNNER_TEMP/PKGBUILD:/PKGBUILD:ro" -w /signed archlinux:latest bash -euc '
-            source /PKGBUILD
-            deps=("${depends[@]}" "${makedepends[@]}")
-            pacman -Syu --noconfirm --needed base-devel cmake "${deps[@]%%[<>=]*}" >/dev/null
+          docker run --rm -v "$PWD:/signed" -w /signed archlinux:latest bash -euc '
+            pacman -Syu --noconfirm --needed base-devel cmake poppler-qt6 qpdf qt6-base qt6-declarative >/dev/null
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release >/dev/null
             cmake --build build --target signed_tests -j"$(nproc)"
             QT_QPA_PLATFORM=offscreen build/signed_tests catalogsMatchTheEnglishOne everyCatalogIsCompiledIn
@@ -194,9 +192,18 @@ jobs:
             echo "No translations to land."
             exit 0
           fi
-          # Language catalogs only: never en.json, nothing outside src/i18n.
+          # Changes to the language catalogs already here, and nothing else:
+          # never en.json, nothing outside src/i18n, and no file created,
+          # deleted, renamed or given another mode.
+          git apply --check "$patch"
+          if [ -n "$(git apply --summary "$patch")" ]; then
+            echo "collected translations do more than change catalogs:" >&2
+            git apply --summary "$patch" >&2
+            exit 1
+          fi
           while IFS=$'\t' read -r -d '' added deleted path; do
-            if ! [[ "$path" =~ ^src/i18n/[a-zA-Z-]+\.json$ ]] || [[ "$path" == */en.json ]]; then
+            if ! [[ "$path" =~ ^src/i18n/[a-zA-Z-]+\.json$ ]] || [[ "$path" == */en.json ]] \
+              || [[ "$(git ls-files --stage -- "$path" | cut -c1-6)" != 100644 ]]; then
               echo "collected translations contain a disallowed path: $path" >&2
               exit 1
             fi
