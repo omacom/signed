@@ -11,7 +11,7 @@ ApplicationWindow {
     minimumWidth: 720
     minimumHeight: 480
     visible: true
-    title: backend.hasDocument ? backend.fileName + " — Signed" : "Signed"
+    title: backend.hasDocument ? qsTr("%1 — Signed").arg(backend.fileName) : "Signed"
     color: "#0e0e10"
 
     Material.theme: Material.Dark
@@ -187,12 +187,12 @@ ApplicationWindow {
     // Discarding placed items always asks first.
     function guard(title, action) {
         if (backend.dirty && backend.items.count > 0)
-            confirm.ask(title, "Your signatures and text haven't been saved to a signed copy yet.", "Discard", action);
+            confirm.ask(title, qsTr("Your signatures and text haven't been saved to a signed copy yet."), qsTr("Discard"), action);
         else
             action();
     }
     function openPdf(url) {
-        guard("Open another PDF?", () => {
+        guard(qsTr("Open another PDF?"), () => {
             selected = -1;
             editingRow = -1;
             if (url)
@@ -200,6 +200,12 @@ ApplicationWindow {
             else
                 backend.open();
         });
+    }
+    // A number in the language's separators and digits. It reads the language
+    // so a binding that calls it re-renders when the language changes.
+    function number(value, decimals) {
+        translator.language;
+        return Number(value).toLocaleString(Qt.locale(), 'f', decimals || 0);
     }
     function urlToPath(url) {
         return decodeURIComponent(url.toString().replace(/^file:\/\//, ""));
@@ -209,7 +215,7 @@ ApplicationWindow {
         if (quitting || !backend.dirty || backend.items.count === 0)
             return;
         close.accepted = false;
-        confirm.ask("Quit without saving?", "Your signatures and text haven't been saved to a signed copy yet.", "Quit", () => {
+        confirm.ask(qsTr("Quit without saving?"), qsTr("Your signatures and text haven't been saved to a signed copy yet."), qsTr("Quit"), () => {
             quitting = true;
             Qt.quit();
         });
@@ -314,7 +320,7 @@ ApplicationWindow {
 
                 BarButton {
                     id: signatureButton
-                    text: "Signature"
+                    text: qsTr("Signature")
                     icon: win.icons.signature
                     key: "S"
                     menu: true
@@ -323,14 +329,14 @@ ApplicationWindow {
                     onClicked: signatureMenu.opened ? signatureMenu.close() : win.openSignatureMenu()
                 }
                 BarButton {
-                    text: "Text"
+                    text: qsTr("Text")
                     icon: win.icons.text
                     key: "T"
                     accent: win.accent
                     onClicked: win.placeText()
                 }
                 BarButton {
-                    text: "Date"
+                    text: qsTr("Date")
                     icon: win.icons.date
                     key: "D"
                     accent: win.accent
@@ -338,7 +344,7 @@ ApplicationWindow {
                 }
                 Rectangle { width: 1; height: 22; color: "#3a3a3c"; anchors.verticalCenter: parent.verticalCenter }
                 BarButton {
-                    text: "Save signed copy…"
+                    text: qsTr("Save signed copy…")
                     primary: true
                     accent: win.accent
                     accentForeground: win.accentForeground
@@ -406,7 +412,7 @@ ApplicationWindow {
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.top: page.bottom
                     anchors.topMargin: 6
-                    text: thumb.index + 1
+                    text: win.number(thumb.index + 1)
                     color: "#8e8e93"
                     font.pixelSize: 11
                 }
@@ -504,21 +510,21 @@ ApplicationWindow {
         }
         Label {
             Layout.alignment: Qt.AlignHCenter
-            text: "Open a PDF to sign"
+            text: qsTr("Open a PDF to sign")
             color: "white"
             font.pixelSize: 20
             font.weight: Font.DemiBold
         }
         Label {
             Layout.alignment: Qt.AlignHCenter
-            text: "or drop one on the window"
+            text: qsTr("or drop one on the window")
             color: "#b8b8bc"
             font.pixelSize: 14
         }
         BarButton {
             Layout.alignment: Qt.AlignHCenter
             Layout.topMargin: 8
-            text: "Open PDF…"
+            text: qsTr("Open PDF…")
             key: "Ctrl+O"
             primary: true
             accent: win.accent
@@ -546,13 +552,13 @@ ApplicationWindow {
             textFormat: Text.StyledText
             text: {
                 const items = backend.items.count;
-                let s = "Page " + (win.currentPage + 1) + " of " + backend.pageCount;
+                let s = qsTr("Page %1 of %2").arg(win.number(win.currentPage + 1)).arg(win.number(backend.pageCount));
                 if (items > 0)
-                    s += " · " + items + (items === 1 ? " item" : " items");
+                    s += " · " + qsTr("%Ln items", "", items);
                 if (backend.dirty && items > 0)
-                    s += " · <font color=\"" + win.accent + "\">unsaved</font>";
+                    s += " · <font color=\"" + win.accent + "\">" + qsTr("unsaved") + "</font>";
                 if (win.zoom !== 1)
-                    s += " · " + Math.round(win.zoom * 100) + "%";
+                    s += " · " + qsTr("%1%").arg(win.number(Math.round(win.zoom * 100)));
                 return s;
             }
             color: "#b8b8bc"
@@ -571,13 +577,15 @@ ApplicationWindow {
                     if (backend.notice !== "")
                         return backend.notice;
                     if (win.editingRow >= 0)
-                        return "Editing text · Shift+Enter for a new line · Enter or Esc when done";
+                        return qsTr("Editing text · Shift+Enter for a new line · Enter or Esc when done");
                     const item = win.selectedItem;
                     if (!item)
                         return "";
-                    if (item.kind === "text")
-                        return Math.round(item.fontSize * 10) / 10 + " pt · double-click to edit · [ ] to resize";
-                    return "Drag to move · drag the corner or [ ] to resize";
+                    if (item.kind === "text") {
+                        const size = Math.round(item.fontSize * 10) / 10;
+                        return qsTr("%1 pt · double-click to edit · [ ] to resize").arg(win.number(size, size % 1 ? 1 : 0));
+                    }
+                    return qsTr("Drag to move · drag the corner or [ ] to resize");
                 }
                 color: backend.notice !== "" ? win.accent : "#8e8e93"
                 font.pixelSize: 12
@@ -627,9 +635,9 @@ ApplicationWindow {
         }
         onDeleteRequested: (name) => {
             close();
-            confirm.ask("Delete “" + name + "”?",
-                        "It's removed from your saved signatures. Anything already placed stays.",
-                        "Delete", () => backend.removeSignature(name));
+            confirm.ask(qsTr("Delete “%1”?").arg(name),
+                        qsTr("It's removed from your saved signatures. Anything already placed stays."),
+                        qsTr("Delete"), () => backend.removeSignature(name));
         }
     }
 
@@ -660,7 +668,7 @@ ApplicationWindow {
                 anchors.centerIn: parent
                 spacing: 16
 
-                Label { text: "Hotkeys"; color: "white"; font.pixelSize: 17; font.weight: Font.DemiBold }
+                Label { text: qsTr("Hotkeys"); color: "white"; font.pixelSize: 17; font.weight: Font.DemiBold }
 
                 GridLayout {
                     columns: 4
@@ -669,15 +677,15 @@ ApplicationWindow {
 
                     Repeater {
                         model: [
-                            ["S", "Place last signature", "Ctrl+O", "Open a PDF"],
-                            ["Shift+S", "Signature menu", "Ctrl+S", "Save signed copy"],
-                            ["T", "Place text", "PgUp / PgDn", "Previous / next page"],
-                            ["D", "Place today's date", "Ctrl+= / − / 0", "Zoom in / out / fit"],
-                            ["Enter", "Edit selected text", "Ctrl+Z", "Undo"],
-                            ["Arrows", "Nudge 1 pt (Shift: 10 pt)", "Ctrl+Shift+Z", "Redo"],
-                            ["[ / ]", "Smaller / larger", "Esc", "Deselect / stop editing"],
-                            ["Ctrl+D", "Duplicate", "Q", "Quit"],
-                            ["Delete", "Remove item", "?", "This list"]
+                            ["S", qsTr("Place last signature"), "Ctrl+O", qsTr("Open a PDF")],
+                            ["Shift+S", qsTr("Signature menu"), "Ctrl+S", qsTr("Save signed copy")],
+                            ["T", qsTr("Place text"), "PgUp / PgDn", qsTr("Previous / next page")],
+                            ["D", qsTr("Place today's date"), "Ctrl+= / − / 0", qsTr("Zoom in / out / fit")],
+                            ["Enter", qsTr("Edit selected text"), "Ctrl+Z", qsTr("Undo")],
+                            [qsTr("Arrows"), qsTr("Nudge 1 pt (Shift: 10 pt)"), "Ctrl+Shift+Z", qsTr("Redo")],
+                            ["[ / ]", qsTr("Smaller / larger"), "Esc", qsTr("Deselect / stop editing")],
+                            ["Ctrl+D", qsTr("Duplicate"), "Q", qsTr("Quit")],
+                            ["Delete", qsTr("Remove item"), "?", qsTr("This list")]
                         ]
                         delegate: Repeater {
                             required property var modelData
