@@ -1,5 +1,6 @@
 #include "signer.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -18,6 +19,10 @@
 namespace Signer {
 
 namespace {
+
+QString tr(const char *text) {
+    return QCoreApplication::translate("Signer", text);
+}
 
 // The app-owned NSS database, next to the signatures directory.
 QString databaseDir() {
@@ -39,13 +44,13 @@ QString ensureBackend(bool create) {
     const QString dir = databaseDir();
     if (!hasDatabase()) {
         if (!create)
-            return QStringLiteral("there are no certificates yet");
+            return tr("there are no certificates yet");
         QDir().mkpath(dir);
         QProcess process;
         process.start(QStringLiteral("certutil"), {QStringLiteral("-N"), QStringLiteral("-d"),
                                                    QStringLiteral("sql:") + dir, QStringLiteral("--empty-password")});
         if (!process.waitForFinished(30000) || process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
-            return QStringLiteral("the certificate database couldn't be created (is nss installed?)");
+            return tr("the certificate database couldn't be created (is nss installed?)");
     }
     Poppler::setNSSDir(dir);
     Poppler::setActiveCryptoSignBackend(Poppler::CryptoSignBackend::NSS);
@@ -83,7 +88,7 @@ QList<Certificate> certificates() {
 QString createCertificate(const QString &name, const QString &organization, QString *nickname) {
     const QString commonName = name.trimmed();
     if (commonName.isEmpty())
-        return QStringLiteral("A name is needed for the certificate.");
+        return tr("A name is needed for the certificate.");
     const QString org = organization.trimmed().isEmpty() ? commonName : organization.trimmed();
 
     if (const QString failure = ensureBackend(true); !failure.isEmpty())
@@ -100,7 +105,7 @@ QString createCertificate(const QString &name, const QString &organization, QStr
         noise.close();
     }
     if (noisePath.isEmpty())
-        return QStringLiteral("couldn't create a temporary file");
+        return tr("couldn't create a temporary file");
 
     const QString nick = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QProcess process;
@@ -117,11 +122,11 @@ QString createCertificate(const QString &name, const QString &organization, QStr
         QStringLiteral("-z"), noisePath,
     });
     if (!process.waitForFinished(30000))
-        return QStringLiteral("the certificate couldn't be created.");
+        return tr("the certificate couldn't be created.");
     QFile::remove(noisePath);
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
         const QString output = QString::fromLocal8Bit(process.readAllStandardError().trimmed());
-        return QStringLiteral("the certificate couldn't be created: %1").arg(output);
+        return tr("the certificate couldn't be created: %1").arg(output);
     }
 
     if (nickname)
@@ -151,7 +156,7 @@ QString importCertificate(const QString &path, const QString &password,
     QStringList passwordArgs{QStringLiteral("-W"), QString()};
     if (!password.isEmpty()) {
         if (!passwordFile.open())
-            return QStringLiteral("couldn't create a temporary file");
+            return tr("couldn't create a temporary file");
         passwordFile.write(password.toUtf8());
         passwordFile.close();
         passwordArgs = {QStringLiteral("-w"), passwordFile.fileName()};
@@ -163,13 +168,13 @@ QString importCertificate(const QString &path, const QString &password,
         QStringLiteral("-K"), QString(),
     } + passwordArgs);
     if (!process.waitForFinished(30000))
-        return QStringLiteral("the certificate couldn't be imported.");
+        return tr("the certificate couldn't be imported.");
 
     if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
         if (needsPassword)
             *needsPassword = password.isEmpty();
         const QString output = QString::fromLocal8Bit(process.readAllStandardError().trimmed());
-        return QStringLiteral("import failed (exit %1, file %2): %3")
+        return tr("import failed (exit %1, file %2): %3")
             .arg(process.exitCode()).arg(path, output);
     }
 
@@ -184,7 +189,7 @@ QString importCertificate(const QString &path, const QString &password,
             return {};
         }
     }
-    return QStringLiteral("the certificate is already in the database.");
+    return tr("the certificate is already in the database.");
 }
 
 Result sign(const QString &path, const QString &certNickname) {
@@ -193,17 +198,17 @@ Result sign(const QString &path, const QString &certNickname) {
 
     std::unique_ptr<Poppler::Document> document = Poppler::Document::load(path);
     if (!document)
-        return {false, false, QStringLiteral("the PDF couldn't be reopened for signing")};
+        return {false, false, tr("the PDF couldn't be reopened for signing")};
     std::unique_ptr<Poppler::PDFConverter> converter = document->pdfConverter();
     if (!converter)
-        return {false, false, QStringLiteral("this poppler can't sign")};
+        return {false, false, tr("this poppler can't sign")};
 
     // poppler signs to a new file; a temp sibling keeps a failure from
     // touching what's already there.
     QTemporaryFile temp(QFileInfo(path).absolutePath() + QStringLiteral("/.signed-XXXXXX.pdf"));
     temp.setAutoRemove(false);
     if (!temp.open())
-        return {false, false, QStringLiteral("couldn't create a temporary file")};
+        return {false, false, tr("couldn't create a temporary file")};
     const QString tempName = temp.fileName();
     temp.close();
 
@@ -224,18 +229,18 @@ Result sign(const QString &path, const QString &certNickname) {
         using SR = Poppler::PDFConverter::SigningResult;
         switch (converter->lastSigningResult()) {
         case SR::UserCancelled:
-            return {false, true, QStringLiteral("signing was cancelled")};
+            return {false, true, tr("signing was cancelled")};
         case SR::KeyMissing:
-            return {false, false, QStringLiteral("the certificate is no longer in the database")};
+            return {false, false, tr("the certificate is no longer in the database")};
         case SR::BadPassphrase:
-            return {false, false, QStringLiteral("the passphrase didn't work")};
+            return {false, false, tr("the passphrase didn't work")};
         case SR::WriteFailed:
-            return {false, false, QStringLiteral("the file couldn't be written")};
+            return {false, false, tr("the file couldn't be written")};
         default: {
             const Poppler::ErrorString details = converter->lastSigningErrorDetails();
             if (details.type == Poppler::ErrorStringType::UserString && !details.data.toString().isEmpty())
                 return {false, false, details.data.toString()};
-            return {false, false, QStringLiteral("signing failed")};
+            return {false, false, tr("signing failed")};
         }
         }
     }
@@ -248,7 +253,7 @@ Result sign(const QString &path, const QString &certNickname) {
     // either the unsigned copy or the signed one, never neither.
     if (std::rename(QFile::encodeName(tempName).constData(), QFile::encodeName(path).constData()) != 0) {
         QFile::remove(tempName);
-        return {false, false, QStringLiteral("the signed file couldn't replace the original")};
+        return {false, false, tr("the signed file couldn't replace the original")};
     }
     return {true, false, {}};
 }

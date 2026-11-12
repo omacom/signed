@@ -9,5 +9,6 @@
         <file alias="Confirm.qml">Confirm.qml</file>
         <file alias="skill.md">skill.md</file>
         <file alias="items.md">items.md</file>
+        <file alias="i18n/en.json">i18n/en.json</file>
     </qresource>
 </RCC>
