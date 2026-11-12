@@ -195,9 +195,12 @@ jobs:
           # Only edits to catalogs already here, never en.json, judged from what
           # the patch staged: its headers can name one file and change another.
           git apply --index "$patch"
-          if [ -n "$(git diff --cached --summary)" ]; then
+          # Read as plain commands, so a git failure stops the step rather than reading as empty.
+          summary=$(git diff --cached --summary)
+          git diff --cached --name-status --no-renames -z > "$RUNNER_TEMP/staged"
+          if [ -n "$summary" ]; then
             echo "collected translations do more than change catalogs:" >&2
-            git diff --cached --summary >&2
+            echo "$summary" >&2
             exit 1
           fi
           while IFS= read -r -d '' status && IFS= read -r -d '' path; do
@@ -206,7 +209,7 @@ jobs:
               echo "collected translations contain a disallowed change: $status $path" >&2
               exit 1
             fi
-          done < <(git diff --cached --name-status --no-renames -z)
+          done < "$RUNNER_TEMP/staged"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'Update translations'
