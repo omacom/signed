@@ -101,7 +101,7 @@ With CMake:
 ./build/signed open some.pdf
 ```
 
-Run the tests (offscreen, including the command line) with `./bin/test`, and install as an Arch package with `./bin/install`.
+Run the tests (offscreen, including the command line) with `./bin/test`.
 
 ## License
 

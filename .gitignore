@@ -1,7 +1,2 @@
 /build/
-/pkg/
-/pkgbuild/pkg/
-/pkgbuild/src/
-*.pkg.tar.*
-*.src.tar.*
 __pycache__/
