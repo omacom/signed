@@ -287,7 +287,7 @@ QStringList catalogProblems(const QString &folder) {
             if (translated.isUndefined())
                 continue;
             if (it.value().isString()) {
-                if (!translated.isString() || translated.toString().isEmpty())
+                if (!translated.isString() || translated.toString().trimmed().isEmpty())
                     problems << where + "needs a translation";
                 else if (placeholders(translated.toString()) != placeholders(it.key()))
                     problems << where + "has other placeholders than the English";
@@ -311,7 +311,7 @@ QStringList catalogProblems(const QString &folder) {
             for (auto form = forms.begin(); form != forms.end(); ++form) {
                 const QStringList has = placeholders(form.value().toString());
                 const QSet<QString> present(has.begin(), has.end());
-                if (form.value().toString().isEmpty())
+                if (form.value().toString().trimmed().isEmpty())
                     problems << where + form.key() + " needs a translation";
                 else if (!(form.key() == "other" ? present == needed : present.contains(fixed) && needed.contains(present)))
                     problems << where + form.key() + " has other placeholders than the English";
@@ -479,8 +479,8 @@ private slots:
                                               "%Ln items": {"one": "jeden element", "few": "%Ln elementy", "other": "%Ln elementu"},
                                               "%Ln items in %1": {"one": "jeden element", "few": "%Ln elementy w %1",
                                                                   "many": "%Ln elementów w %1", "other": "%Ln elementu w %1"}})");
-        writeFile(dir.filePath("da.json"), R"({"Open": "Åbn", "Open %1": "Åbn %1",
-                                              "%Ln items": {"one": "ét element", "other": "%Ln elementer"},
+        writeFile(dir.filePath("da.json"), R"({"Open": " ", "Open %1": "Åbn %1",
+                                              "%Ln items": {"one": "ét element", "other": "  "},
                                               "%Ln items in %1": {"one": "%Ln element i %1", "other": "%Ln elementer i %1"}})");
         // German hasn't caught up yet: one string still to translate and one
         // the English has since dropped.
@@ -488,7 +488,9 @@ private slots:
         writeFile(dir.filePath("xx.json"), "{}");
         QStringList problems = catalogProblems(dir.path());
         problems.sort();
-        QCOMPARE(problems, QStringList({"pl: %Ln items in %1: one has other placeholders than the English",
+        QCOMPARE(problems, QStringList({"da: %Ln items: other needs a translation",
+                                        "da: Open: needs a translation",
+                                        "pl: %Ln items in %1: one has other placeholders than the English",
                                         "pl: %Ln items: needs exactly the plural forms few, many, one, other",
                                         "pl: Open %1: has other placeholders than the English",
                                         "xx.json: not one of Omarchy's language codes"}));
