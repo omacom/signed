@@ -9,7 +9,7 @@ url='https://github.com/omacom/signed'
 license=('MIT')
 install='signed.install'
 depends=('qt6-base' 'qt6-declarative' 'qt6-wayland' 'poppler-qt6' 'qpdf' 'nss' 'noto-fonts' 'xdg-desktop-portal')
-makedepends=('gcc' 'make' 'qt6-base' 'qt6-declarative' 'poppler-qt6' 'qpdf')
+makedepends=('cmake' 'gcc' 'make' 'qt6-base' 'qt6-declarative' 'poppler-qt6' 'qpdf')
 source=()
 sha256sums=()
 

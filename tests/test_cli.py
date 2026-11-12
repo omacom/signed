@@ -8,7 +8,7 @@ import tempfile
 import unittest
 import zlib
 
-APP = Path(__file__).resolve().parents[1] / 'build/signed'
+APP = Path(os.environ.get('SIGNED', Path(__file__).resolve().parents[1] / 'build/signed'))
 
 
 def write_pdf(path, pages=2):
