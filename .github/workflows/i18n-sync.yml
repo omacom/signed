@@ -192,23 +192,21 @@ jobs:
             echo "No translations to land."
             exit 0
           fi
-          # Changes to the language catalogs already here, and nothing else:
-          # never en.json, nothing outside src/i18n, and no file created,
-          # deleted, renamed or given another mode.
-          git apply --check "$patch"
-          if [ -n "$(git apply --summary "$patch")" ]; then
+          # Only edits to catalogs already here, never en.json, judged from what
+          # the patch staged: its headers can name one file and change another.
+          git apply --index "$patch"
+          if [ -n "$(git diff --cached --summary)" ]; then
             echo "collected translations do more than change catalogs:" >&2
-            git apply --summary "$patch" >&2
+            git diff --cached --summary >&2
             exit 1
           fi
-          while IFS=$'\t' read -r -d '' added deleted path; do
-            if ! [[ "$path" =~ ^src/i18n/[a-zA-Z-]+\.json$ ]] || [[ "$path" == */en.json ]] \
-              || [[ "$(git ls-files --stage -- "$path" | cut -c1-6)" != 100644 ]]; then
-              echo "collected translations contain a disallowed path: $path" >&2
+          while IFS= read -r -d '' status && IFS= read -r -d '' path; do
+            if [[ "$status" != M ]] || ! [[ "$path" =~ ^src/i18n/[a-zA-Z-]+\.json$ ]] || [[ "$path" == */en.json ]] \
+              || [[ "$(git ls-tree HEAD -- "$path" | cut -c1-6)" != 100644 ]]; then
+              echo "collected translations contain a disallowed change: $status $path" >&2
               exit 1
             fi
-          done < <(git apply --numstat -z "$patch")
-          git apply --index "$patch"
+          done < <(git diff --cached --name-status --no-renames -z)
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'Update translations'
