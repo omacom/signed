@@ -1,5 +1,10 @@
 #include <QDir>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QMap>
+#include <QRegularExpression>
+#include <QSet>
 #include <QImageWriter>
 #include <QSettings>
 #include <QPainter>
@@ -115,6 +120,207 @@ bool near(const QRect &actual, const QRect &expected) {
            std::abs(actual.right() - expected.right()) <= 1 && std::abs(actual.bottom() - expected.bottom()) <= 1;
 }
 
+// The folder of the app's sources, where its catalogs live.
+QString sourceFolder() {
+    return QFileInfo(QFINDTESTDATA("../src/main.cpp")).absolutePath();
+}
+
+// A source file with its comments left out (their examples aren't calls)
+// and its strings kept whole, so neither hides the other.
+QString withoutComments(const QString &text, bool cpp) {
+    QString out;
+    for (qsizetype i = 0; i < text.size();) {
+        const QChar c = text.at(i);
+        if (text.mid(i, 2) == "//") {
+            const qsizetype end = text.indexOf('\n', i);
+            i = end < 0 ? text.size() : end;
+        } else if (text.mid(i, 2) == "/*") {
+            const qsizetype end = text.indexOf("*/", i + 2);
+            i = end < 0 ? text.size() : end + 2;
+        } else if (cpp && c == '"' && i > 0 && text.at(i - 1) == 'R') {
+            // A raw string holds quotes of its own; it's no translation, so it's left out whole.
+            const qsizetype open = text.indexOf('(', i);
+            const QString close = ')' + text.mid(i + 1, open - i - 1) + '"';
+            out += "\"\"";
+            i = text.indexOf(close, open) + close.size();
+        } else if (c == '"' || c == '\'' || c == '`') {
+            qsizetype end = i + 1;
+            while (end < text.size() && text.at(end) != c)
+                end += text.at(end) == '\\' ? 2 : 1;
+            out += text.mid(i, end + 1 - i);
+            i = end + 1;
+        } else {
+            out += c;
+            ++i;
+        }
+    }
+    return out;
+}
+
+// A literal's text as the language reads it.
+QString unescaped(const QString &literal) {
+    QString out;
+    for (qsizetype i = 0; i < literal.size(); ++i) {
+        QChar c = literal.at(i);
+        if (c == '\\' && i + 1 < literal.size()) {
+            c = literal.at(++i);
+            c = c == 'n' ? QChar('\n') : c == 't' ? QChar('\t') : c;
+        }
+        out += c;
+    }
+    return out;
+}
+
+// Every text the sources hand to qsTr(), tr() or QT_TR_NOOP(), and whether
+// any call also passes it a count (its third argument). C++'s adjacent
+// literals are one text. A call whose text isn't a literal can't be in a
+// catalog, and is reported in `problems`; the signer's and stamper's own
+// tr() helpers are definitions, not calls.
+QMap<QString, bool> translatables(const QString &folder, QStringList *problems) {
+    static const QRegularExpression call(R"((?<!QString )\b(qsTr|tr|QT_TR_NOOP)\s*\()");
+    static const QRegularExpression literal(R"(^\s*(["'])((?:\\.|(?!\1).)*)\1)",
+                                            QRegularExpression::DotMatchesEverythingOption);
+    QMap<QString, bool> found;
+    for (const QFileInfo &info : QDir(folder).entryInfoList({"*.qml", "*.js", "*.cpp", "*.h"}, QDir::Files)) {
+        QFile file(info.filePath());
+        if (!file.open(QIODevice::ReadOnly))
+            continue;
+        const bool cpp = info.suffix() == "cpp" || info.suffix() == "h";
+        const QString code = withoutComments(QString::fromUtf8(file.readAll()), cpp);
+        for (auto calls = call.globalMatch(code); calls.hasNext();) {
+            const auto match = calls.next();
+            qsizetype at = match.capturedEnd();
+            QString text;
+            bool isLiteral = false;
+            for (auto part = literal.match(code.mid(at)); part.hasMatch(); part = literal.match(code.mid(at))) {
+                text += unescaped(part.captured(2));
+                at += part.capturedEnd();
+                isLiteral = true;
+                if (!cpp)
+                    break;
+            }
+            if (!isLiteral) {
+                *problems << info.fileName() + ": not a literal: " + code.mid(match.capturedStart(), 60);
+                continue;
+            }
+            // The arguments after the text, up to the call's closing parenthesis.
+            int depth = 0, commas = 0;
+            for (; at < code.size(); ++at) {
+                const QChar c = code.at(at);
+                if (c == '"' || c == '\'') {
+                    for (++at; at < code.size() && code.at(at) != c; at += code.at(at) == '\\' ? 2 : 1) { }
+                } else if (c == '(' || c == '[' || c == '{') {
+                    ++depth;
+                } else if (c == ')' || c == ']' || c == '}') {
+                    if (depth-- == 0)
+                        break;
+                } else if (c == ',' && depth == 0) {
+                    ++commas;
+                }
+            }
+            found[text] = found.value(text) || commas >= 2;
+        }
+    }
+    return found;
+}
+
+QJsonObject readCatalog(const QString &path, QStringList *problems) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        *problems << path + ": can't be read";
+        return {};
+    }
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &error);
+    if (!document.isObject())
+        *problems << path + ": not a JSON object: " + error.errorString();
+    return document.object();
+}
+
+// The placeholders in a text, in order: %1 to %9, and the count (%n, %Ln).
+QStringList placeholders(const QString &text) {
+    static const QRegularExpression placeholder("%L?[1-9n]");
+    QStringList found;
+    for (auto it = placeholder.globalMatch(text); it.hasNext();)
+        found << it.next().captured();
+    found.sort();
+    return found;
+}
+
+// Omarchy's 49 translations (default/i18n/locales.json), as the sync's LANGUAGES has them.
+const QStringList &languageCodes() {
+    static const QStringList codes{"ar", "bg", "bn", "ca", "cs", "da", "de", "el", "es-MX", "et", "fa", "fi", "fil",
+                                   "fr", "ga", "he", "hi", "hr", "hu", "id", "is", "it", "ja", "ko", "lt", "lv", "ms",
+                                   "nl", "no", "pl", "pt", "pt-BR", "ro", "ru", "si", "sk", "sl", "sr", "sv", "sw",
+                                   "ta", "th", "tr", "uk", "ur", "uz", "vi", "zh-CN", "zh-TW"};
+    return codes;
+}
+
+// What's wrong with the translations in `folder`, measured against its
+// en.json: an unknown language, empty or broken translations, and plural
+// forms that don't fit the language's rule. A string a catalog lacks, or one
+// en.json no longer has, is work for the translation sync
+// (scripts/i18n-sync.py), not a problem: the window shows the English
+// meanwhile, so a change to the English never waits on 49 languages.
+QStringList catalogProblems(const QString &folder) {
+    const QStringList &codes = languageCodes();
+    QStringList problems;
+    const QJsonObject english = readCatalog(folder + "/en.json", &problems);
+    for (const QFileInfo &file : QDir(folder).entryInfoList({"*.json"}, QDir::Files)) {
+        const QString code = file.completeBaseName();
+        if (code == "en")
+            continue;
+        if (!codes.contains(code)) {
+            problems << file.fileName() + ": not one of Omarchy's language codes";
+            continue;
+        }
+        const QJsonObject catalog = readCatalog(file.filePath(), &problems);
+
+        // The categories the language's rule reaches, and "other" always.
+        QSet<QString> categories{"other", Translator::pluralCategory(code, 1000000)};
+        for (long long n = 0; n <= 1000; ++n)
+            categories << Translator::pluralCategory(code, n);
+
+        for (auto it = english.begin(); it != english.end(); ++it) {
+            const QJsonValue translated = catalog.value(it.key());
+            const QString where = code + ": " + it.key() + ": ";
+            if (translated.isUndefined())
+                continue;
+            if (it.value().isString()) {
+                if (!translated.isString() || translated.toString().trimmed().isEmpty())
+                    problems << where + "needs a translation";
+                else if (placeholders(translated.toString()) != placeholders(it.key()))
+                    problems << where + "has other placeholders than the English";
+                continue;
+            }
+            const QJsonObject forms = translated.toObject();
+            const QStringList given = forms.keys();
+            if (!translated.isObject() || QSet<QString>(given.begin(), given.end()) != categories) {
+                QStringList wanted(categories.begin(), categories.end());
+                wanted.sort();
+                problems << where + "needs exactly the plural forms " + wanted.join(", ");
+                continue;
+            }
+            // Every form says every placeholder; one that isn't "other" may
+            // say the number in words instead of the count.
+            const QStringList all = placeholders(it.value().toObject().value("other").toString());
+            const QSet<QString> needed(all.begin(), all.end());
+            QSet<QString> fixed = needed;
+            fixed.remove("%n");
+            fixed.remove("%Ln");
+            for (auto form = forms.begin(); form != forms.end(); ++form) {
+                const QStringList has = placeholders(form.value().toString());
+                const QSet<QString> present(has.begin(), has.end());
+                if (form.value().toString().trimmed().isEmpty())
+                    problems << where + form.key() + " needs a translation";
+                else if (!(form.key() == "other" ? present == needed : present.contains(fixed) && needed.contains(present)))
+                    problems << where + form.key() + " has other placeholders than the English";
+            }
+        }
+    }
+    return problems;
+}
+
 }
 
 class SignedTests : public QObject {
@@ -225,6 +431,80 @@ private slots:
         Translator japanese(dir.path() + "/language", dir.path());
         QCOMPARE(japanese.translate("Main", "%n items", nullptr, 1), QString("%n item"));
         QCOMPARE(Translator::pluralCategory("ja", 1), QString("other"));
+    }
+
+    void englishCatalogMatchesTheSources() {
+        // en.json is the source translators work from: every text the
+        // sources translate is in it, as itself or (when a count is passed)
+        // as its English plural forms, and nothing else is.
+        QStringList problems;
+        const QMap<QString, bool> used = translatables(sourceFolder(), &problems);
+        QVERIFY(used.size() > 100);
+        QVERIFY(used.value("%Ln items"));
+        const QJsonObject english = readCatalog(sourceFolder() + "/i18n/en.json", &problems);
+        for (auto it = used.begin(); it != used.end(); ++it) {
+            const QJsonValue value = english.value(it.key());
+            if (value.isUndefined())
+                problems << "missing from en.json: " + it.key();
+            else if (it.value() && (value.toObject().keys() != QStringList{"one", "other"}
+                                    || value.toObject().value("other").toString() != it.key()))
+                problems << "counted, so needs its one and other forms: " + it.key();
+            else if (!it.value() && value.toString() != it.key())
+                problems << "should be itself: " + it.key();
+        }
+        for (const QString &key : english.keys())
+            if (!used.contains(key))
+                problems << "in en.json but no source translates it: " + key;
+        QVERIFY2(problems.isEmpty(), qPrintable(problems.join('\n')));
+    }
+
+    void catalogsMatchTheEnglishOne() {
+        QStringList problems = catalogProblems(sourceFolder() + "/i18n");
+        // Every language has its catalog, empty until the sync fills it: the
+        // sync only changes catalogs that exist, and only these are compiled in.
+        for (const QString &code : languageCodes())
+            if (!QFileInfo::exists(sourceFolder() + "/i18n/" + code + ".json"))
+                problems << code + ".json: missing";
+        QVERIFY2(problems.isEmpty(), qPrintable(problems.join('\n')));
+    }
+
+    void catalogChecksCatchBrokenTranslations() {
+        QTemporaryDir dir;
+        writeFile(dir.filePath("en.json"), R"({"Open": "Open", "Open %1": "Open %1",
+                                              "%Ln items": {"one": "%Ln item", "other": "%Ln items"},
+                                              "%Ln items in %1": {"one": "%Ln item in %1", "other": "%Ln items in %1"}})");
+        // Polish needs one, few, many and other; a form may say "one" in
+        // words, but not drop the document.
+        writeFile(dir.filePath("pl.json"), R"({"Open": "Otwórz", "Open %1": "Otwórz",
+                                              "%Ln items": {"one": "jeden element", "few": "%Ln elementy", "other": "%Ln elementu"},
+                                              "%Ln items in %1": {"one": "jeden element", "few": "%Ln elementy w %1",
+                                                                  "many": "%Ln elementów w %1", "other": "%Ln elementu w %1"}})");
+        writeFile(dir.filePath("da.json"), R"({"Open": " ", "Open %1": "Åbn %1",
+                                              "%Ln items": {"one": "ét element", "other": "  "},
+                                              "%Ln items in %1": {"one": "%Ln element i %1", "other": "%Ln elementer i %1"}})");
+        // German hasn't caught up yet: one string still to translate and one
+        // the English has since dropped.
+        writeFile(dir.filePath("de.json"), R"({"Open": "Öffnen", "Opened": "Geöffnet"})");
+        writeFile(dir.filePath("xx.json"), "{}");
+        QStringList problems = catalogProblems(dir.path());
+        problems.sort();
+        QCOMPARE(problems, QStringList({"da: %Ln items: other needs a translation",
+                                        "da: Open: needs a translation",
+                                        "pl: %Ln items in %1: one has other placeholders than the English",
+                                        "pl: %Ln items: needs exactly the plural forms few, many, one, other",
+                                        "pl: Open %1: has other placeholders than the English",
+                                        "xx.json: not one of Omarchy's language codes"}));
+    }
+
+    void everyCatalogIsCompiledIn() {
+        QFile resources(sourceFolder() + "/resources.qrc");
+        QVERIFY(resources.open(QIODevice::ReadOnly));
+        const QString listed = QString::fromUtf8(resources.readAll());
+        QStringList left;
+        for (const QString &name : QDir(sourceFolder() + "/i18n").entryList({"*.json"}, QDir::Files))
+            if (!listed.contains("<file>i18n/" + name + "</file>"))
+                left << name;
+        QVERIFY2(left.isEmpty(), qPrintable("not in resources.qrc: " + left.join(", ")));
     }
 
     void stampLandsWherePlaced_data() {

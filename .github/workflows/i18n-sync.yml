@@ -1,0 +1,229 @@
+name: Sync translations
+
+# Keeps the 49 translations in step with src/i18n/en.json without ever
+# blocking English, the way Omarchy's and folio's i18n-sync workflows do. One
+# credential-less Muse runner per pending language translates; a
+# credential-less collect job takes only each language's own catalog,
+# validates the result with the catalog tests, and hands it on as a patch;
+# a trusted land job, which runs no repository code, path-checks that patch
+# and lands it as one pull request it merges itself.
+#
+# Repository settings this needs: the MUSE_API_KEY Actions secret (and an
+# optional MUSE_MODEL variable), and an I18N_SYNC_TOKEN secret (a
+# fine-grained PAT with contents + pull-requests write on this repo) for
+# the bot that opens and merges the pull request.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/i18n/en.json'
+  workflow_dispatch:
+  schedule:
+    # Retry unfinished translations.
+    - cron: '17 4 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: i18n-sync
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      locales: ${{ steps.pending.outputs.locales }}
+      sha: ${{ steps.pending.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Find pending translations
+        id: pending
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "locales=$(python3 scripts/i18n-sync.py pending | jq -c .locales)" >> "$GITHUB_OUTPUT"
+
+  translate:
+    needs: prepare
+    if: needs.prepare.outputs.locales != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        locale: ${{ fromJSON(needs.prepare.outputs.locales) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - name: Install Muse
+        # Keep the pin in step with omacom/omarchy's i18n-sync workflow.
+        run: |
+          mkdir -p "$RUNNER_TEMP/muse-bin"
+          curl --fail --silent --show-error --location https://api.meta.ai/muse-launcher.sh --output "$RUNNER_TEMP/muse-bin/muse"
+          echo "c6db294799a190ca380da274beb3b9c0e160e0da9681a3d364ce8b0e5fa3a4bc  $RUNNER_TEMP/muse-bin/muse" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/muse-bin/muse"
+          MUSE_LAUNCHER_INSTALL=1 "$RUNNER_TEMP/muse-bin/muse"
+          echo "MUSE_NO_AUTO_UPDATE=1" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/muse-bin" >> "$GITHUB_PATH"
+      - name: Configure Muse
+        env:
+          MUSE_API_KEY: ${{ secrets.MUSE_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          key = os.environ.get('MUSE_API_KEY')
+          if not key:
+              raise SystemExit('Add the MUSE_API_KEY Actions secret to enable automatic translations.')
+          config = Path.home() / '.config/muse'
+          config.mkdir(parents=True, exist_ok=True)
+          auth = config / 'auth.json'
+          auth.write_text(json.dumps({'schema_version': 1, 'providers': {'meta': {'api_key': key}}}))
+          auth.chmod(0o600)
+          PY
+      - name: Translate this language's pending strings
+        # What fails stays pending for the next run; what worked still lands.
+        continue-on-error: true
+        timeout-minutes: 35
+        env:
+          MUSE_MODEL: ${{ vars.MUSE_MODEL || 'muse-spark-1.3-contributor' }}
+          LOCALE: ${{ matrix.locale }}
+        run: python3 scripts/i18n-sync.py translate --locale "$LOCALE" --model "$MUSE_MODEL"
+      - name: Remove Muse credentials
+        if: always()
+        run: rm -f "$HOME/.config/muse/auth.json"
+      - name: Stage this language's catalog
+        # A lone file would lose its folders in the artifact; collect looks
+        # for it under src/i18n.
+        if: always()
+        env:
+          LOCALE: ${{ matrix.locale }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/out/src/i18n"
+          cp "src/i18n/$LOCALE.json" "$RUNNER_TEMP/out/src/i18n/"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: translations-${{ matrix.locale }}
+          path: ${{ runner.temp }}/out
+          retention-days: 3
+          if-no-files-found: error
+
+  # Takes each runner's own catalog and nothing else, and validates the
+  # whole set with the catalog tests, with no credentials. The outcome
+  # leaves as a patch for land.
+  collect:
+    needs: [prepare, translate]
+    # Keep the languages that finished even when another runner failed.
+    if: ${{ always() && !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.locales != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: translations-*
+          path: ${{ runner.temp }}/translations
+      - name: Collect completed translations
+        env:
+          EXPECTED: ${{ needs.prepare.outputs.locales }}
+        run: python3 scripts/i18n-sync.py collect "$RUNNER_TEMP/translations" --expected "$(jq -r 'join(",")' <<< "$EXPECTED")"
+      - name: Validate with the catalog tests
+        # Built against Arch's Qt, like Signed's own CI. The packages are
+        # listed here rather than read from omarchy-pkgs' PKGBUILD, so no
+        # code from outside this repository runs beside what land trusts.
+        run: |
+          docker run --rm -v "$PWD:/signed" -w /signed archlinux:latest bash -euc '
+            pacman -Syu --noconfirm --needed base-devel cmake poppler-qt6 qpdf qt6-base qt6-declarative >/dev/null
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release >/dev/null
+            cmake --build build --target signed_tests -j"$(nproc)"
+            QT_QPA_PLATFORM=offscreen build/signed_tests catalogsMatchTheEnglishOne everyCatalogIsCompiledIn
+          '
+      - name: Package the collected translations
+        run: |
+          mkdir -p "$RUNNER_TEMP/collected"
+          git diff --binary --no-renames -- src/i18n > "$RUNNER_TEMP/collected/translations.patch"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: collected
+          path: ${{ runner.temp }}/collected/translations.patch
+          retention-days: 3
+          if-no-files-found: error
+      - name: Report what's still pending
+        if: always()
+        run: |
+          python3 scripts/i18n-sync.py pending | jq -r '"Strings still pending: **\([.jobs[].pending | length] | add // 0)** across \(.locales | length) languages. English shows meanwhile; the next run retries them."' >> "$GITHUB_STEP_SUMMARY"
+
+  # Lands the collected translations as one pull request. This job holds the
+  # write token, so it runs no repository code: only git, gh, and the path
+  # check written inline here.
+  land:
+    needs: [prepare, collect]
+    if: ${{ always() && !cancelled() && needs.collect.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          token: ${{ secrets.I18N_SYNC_TOKEN || github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: collected
+          path: ${{ runner.temp }}/collected
+      - name: Commit, open and merge the pull request
+        env:
+          GH_TOKEN: ${{ secrets.I18N_SYNC_TOKEN || github.token }}
+        run: |
+          patch="$RUNNER_TEMP/collected/translations.patch"
+          if [ ! -s "$patch" ]; then
+            echo "No translations to land."
+            exit 0
+          fi
+          # Only edits to catalogs already here, never en.json, judged from what
+          # the patch staged: its headers can name one file and change another.
+          git apply --index "$patch"
+          # Read as plain commands, so a git failure stops the step rather than reading as empty.
+          summary=$(git diff --cached --summary)
+          git diff --cached --name-status --no-renames -z > "$RUNNER_TEMP/staged"
+          if [ -n "$summary" ]; then
+            echo "collected translations do more than change catalogs:" >&2
+            echo "$summary" >&2
+            exit 1
+          fi
+          while IFS= read -r -d '' status && IFS= read -r -d '' path; do
+            if [[ "$status" != M ]] || ! [[ "$path" =~ ^src/i18n/[a-zA-Z-]+\.json$ ]] || [[ "$path" == */en.json ]] \
+              || [[ "$(git ls-tree HEAD -- "$path" | cut -c1-6)" != 100644 ]]; then
+              echo "collected translations contain a disallowed change: $status $path" >&2
+              exit 1
+            fi
+          done < "$RUNNER_TEMP/staged"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Update translations'
+          git push --force origin HEAD:refs/heads/i18n-sync
+          # Only this repository's own sync branch: owner:branch matches
+          # exactly that head, where gh pr list --head also matches forks.
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls?head=$GITHUB_REPOSITORY_OWNER:i18n-sync&base=main&state=open" --jq '.[0].number // empty')
+          if [ -z "$pr" ]; then
+            pr=$(basename "$(gh pr create --base main --head i18n-sync --title 'Update translations' \
+              --body 'Automated translation sync: fills pending strings in the 49 language catalogs from src/i18n/en.json. Generated by the Sync translations workflow, which validated these catalogs with the catalog tests and merges this pull request itself.')")
+          fi
+          # Merged here rather than left open: the next run rebuilds
+          # i18n-sync from main, so an open pull request would lose these.
+          if ! gh pr merge --squash --delete-branch "$pr"; then
+            echo "Could not merge #$pr; its translations stay pending and are redone by the next run." >&2
+            exit 1
+          fi
