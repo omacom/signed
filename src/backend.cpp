@@ -308,7 +308,7 @@ QString Backend::saveSignature(const QString &name, const QString &organization,
     if (const QString invalid = m_signatures->validateName(name); !invalid.isEmpty())
         return invalid;
     if (m_preview.isNull())
-        return QStringLiteral("There's no signature in that image.");
+        return tr("There's no signature in that image.");
 
     // The dialog sends a certificate id, "new" for a fresh self-signed one
     // made for this signature (Common Name = name, Organization =
@@ -345,7 +345,7 @@ QString Backend::saveSignature(const QString &name, const QString &organization,
 void Backend::removeSignature(const QString &name) {
     // Its size and seal go only with the image, so one that stays keeps them.
     if (!m_signatures->remove(name)) {
-        setNotice(QStringLiteral("Couldn't delete “%1”.").arg(name));
+        setNotice(tr("Couldn't delete “%1”.").arg(name));
         return;
     }
     m_settings->remove("signatureWidth/" + name);
