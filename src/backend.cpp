@@ -305,21 +305,30 @@ QImage Backend::previewImage(const QString &which) const {
 }
 
 QString Backend::saveSignature(const QString &name, const QString &organization, const QString &certId) {
-    const QString error = m_signatures->add(name, m_preview);
-    if (!error.isEmpty())
-        return error;
-    // A replaced signature should start at its new natural size.
-    m_settings->remove("signatureWidth/" + name.trimmed());
+    if (const QString invalid = m_signatures->validateName(name); !invalid.isEmpty())
+        return invalid;
+    if (m_preview.isNull())
+        return tr("There's no signature in that image.");
 
     // The dialog sends a certificate id, "new" for a fresh self-signed one
     // made for this signature (Common Name = name, Organization =
-    // organization), or nothing for no certificate at all.
+    // organization), or nothing for no certificate at all. A new one is made
+    // first, so failing to make it leaves the saved signature as it was.
     QString bound = certId;
     if (bound == QLatin1String("new")) {
         const QString failure = Signer::createCertificate(name, organization, &bound);
         if (!failure.isEmpty())
             return failure;
     }
+
+    const QString error = m_signatures->add(name, m_preview);
+    if (!error.isEmpty()) {
+        if (certId == QLatin1String("new"))
+            Signer::removeCertificate(bound);
+        return error;
+    }
+    // A replaced signature should start at its new natural size.
+    m_settings->remove("signatureWidth/" + name.trimmed());
     if (bound.isEmpty())
         m_settings->remove("signatureKey/" + name.trimmed());
     else
@@ -334,7 +343,11 @@ QString Backend::saveSignature(const QString &name, const QString &organization,
 }
 
 void Backend::removeSignature(const QString &name) {
-    m_signatures->remove(name);
+    // Its size and seal go only with the image, so one that stays keeps them.
+    if (!m_signatures->remove(name)) {
+        setNotice(tr("Couldn't delete “%1”.").arg(name));
+        return;
+    }
     m_settings->remove("signatureWidth/" + name);
     m_settings->remove("signatureKey/" + name);
     emit lastSignatureChanged();

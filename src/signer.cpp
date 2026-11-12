@@ -57,6 +57,18 @@ QString ensureBackend(bool create) {
     done = true;
     return {};
 }
+
+// A subject attribute's value as the hex of a DER UTF8String, which certutil
+// takes as is, so a comma, quote, or leading # in a name stays part of it.
+QString subjectValue(const QString &value) {
+    const QByteArray text = value.toUtf8();
+    QByteArray length;
+    for (qsizetype n = text.size(); n > 0 || length.isEmpty(); n >>= 8)
+        length.prepend(char(n & 0xff));
+    if (text.size() >= 0x80)
+        length.prepend(char(0x80 | length.size()));
+    return QLatin1Char('#') + QString::fromLatin1((QByteArray(1, '\x0c') + length + text).toHex());
+}
 }
 QList<Certificate> certificates() {
     if (!ensureBackend(false).isEmpty())
@@ -103,7 +115,7 @@ QString createCertificate(const QString &name, const QString &organization, QStr
         // self-signed certs all share the same issuer (themselves), so the
         // serial must differ between them
         QStringLiteral("-m"), QString::number(QRandomGenerator::global()->generate64() % 999999999),
-        QStringLiteral("-s"), QStringLiteral("CN=%1, O=%2").arg(commonName, org),
+        QStringLiteral("-s"), QStringLiteral("CN=%1, O=%2").arg(subjectValue(commonName), subjectValue(org)),
         QStringLiteral("-k"), QStringLiteral("rsa"), QStringLiteral("-g"), QStringLiteral("2048"),
         QStringLiteral("-v"), QStringLiteral("1200"), QStringLiteral("-Z"), QStringLiteral("SHA256"),
         QStringLiteral("--keyUsage"), QStringLiteral("digitalSignature,nonRepudiation"),
@@ -120,6 +132,15 @@ QString createCertificate(const QString &name, const QString &organization, QStr
     if (nickname)
         *nickname = nick;
     return {};
+}
+
+bool removeCertificate(const QString &nickname) {
+    if (!hasDatabase())
+        return false;
+    QProcess process;
+    process.start(QStringLiteral("certutil"), {QStringLiteral("-F"), QStringLiteral("-d"),
+                                               QStringLiteral("sql:") + databaseDir(), QStringLiteral("-n"), nickname});
+    return process.waitForFinished(30000) && process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
 }
 
 QString importCertificate(const QString &path, const QString &password,
@@ -223,6 +244,10 @@ Result sign(const QString &path, const QString &certNickname) {
         }
         }
     }
+
+    // The temp file was created private; the signed copy keeps the
+    // permissions the unsigned one had.
+    QFile::setPermissions(tempName, QFile::permissions(path));
 
     // Swap the signed temp file into place in one step, so a crash leaves
     // either the unsigned copy or the signed one, never neither.

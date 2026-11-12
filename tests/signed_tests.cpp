@@ -617,6 +617,29 @@ private slots:
         QVERIFY(!bounds(render(target, 0), isRed).isEmpty());
     }
 
+    void failedDeletionKeepsTheSeal() {
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        SignatureLibrary library(dir.filePath("signatures"));
+        QImage red(60, 30, QImage::Format_ARGB32);
+        red.fill(Qt::red);
+        QCOMPARE(library.add("David", red), QString());
+        settings.setValue("signatureKey/David", "some-certificate");
+
+        Backend backend(nullptr, nullptr, &library, &settings);
+        const auto writable = QFile::permissions(library.directory());
+        QVERIFY(QFile::setPermissions(library.directory(), QFile::ReadOwner | QFile::ExeOwner));
+        if (QFileInfo(library.directory()).isWritable()) {
+            QFile::setPermissions(library.directory(), writable);
+            QSKIP("Root can delete from a read-only directory.");
+        }
+        backend.removeSignature("David");
+        QFile::setPermissions(library.directory(), writable);
+        QVERIFY(library.contains("David"));
+        QCOMPARE(backend.signatureKey("David"), QString("some-certificate"));
+        QVERIFY(!backend.notice().isEmpty());
+    }
+
     void passwordProtectedPdfsAreRefused() {
         QTemporaryDir dir;
         const QString plain = dir.filePath("plain.pdf");
@@ -647,13 +670,14 @@ private slots:
 
     void createdKeySignsAndVerifies() {
         QString nickname;
-        QCOMPARE(Signer::createCertificate(QStringLiteral("Test User"), QString(), &nickname), QString());
+        // A comma or a leading # in a name is part of it, not subject syntax.
+        QCOMPARE(Signer::createCertificate(QStringLiteral("#1 Morgan, Ærø"), QString(), &nickname), QString());
         QVERIFY(!nickname.isEmpty());
         const QList<Signer::Certificate> certs = Signer::certificates();
         QCOMPARE(certs.size(), 1);
         QCOMPARE(certs.at(0).nickname, nickname);
-        QCOMPARE(certs.at(0).commonName, QStringLiteral("Test User"));
-        QCOMPARE(certs.at(0).organization, QStringLiteral("Test User"));
+        QCOMPARE(certs.at(0).commonName, QStringLiteral("#1 Morgan, Ærø"));
+        QCOMPARE(certs.at(0).organization, QStringLiteral("#1 Morgan, Ærø"));
 
         QTemporaryDir dir;
         const QString source = dir.filePath("lease.pdf");
@@ -667,10 +691,13 @@ private slots:
 
         // The signature is invisible: signing changes nothing on the page.
         const QImage before = render(target, 0);
+        const QFile::Permissions permissions = QFile::permissions(target);
         const Signer::Result result = Signer::sign(target, nickname);
         if (!result.ok)
             QFAIL(qPrintable(QStringLiteral("signing failed: %1").arg(result.error)));
         QCOMPARE(render(target, 0), before);
+        // Sealing doesn't make the copy private.
+        QCOMPARE(QFile::permissions(target), permissions);
 
         std::unique_ptr<Poppler::Document> document = Poppler::Document::load(target);
         QVERIFY(document);
@@ -678,6 +705,37 @@ private slots:
         QCOMPARE(signatures.size(), 1);
         QCOMPARE(signatures.at(0)->signatureType(), Poppler::FormFieldSignature::AdbePkcs7detached);
         QCOMPARE(signatureStatus(*signatures.at(0)), Poppler::SignatureValidationInfo::SignatureValid);
+    }
+
+    void failedCertificateLeavesTheSignatureUnsaved() {
+        QTemporaryDir dir;
+        QSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        SignatureLibrary library(dir.filePath("signatures"));
+        Backend backend(nullptr, nullptr, &library, &settings);
+        QImage source(60, 30, QImage::Format_ARGB32);
+        source.fill(Qt::white);
+        QPainter(&source).fillRect(10, 10, 40, 10, Qt::black);
+        const QString path = dir.filePath("ink.png");
+        QVERIFY(source.save(path));
+        QVERIFY(backend.loadSignatureImage(path));
+
+        // Without certutil on the PATH, no certificate can be made.
+        const QByteArray searchPath = qgetenv("PATH");
+        qputenv("PATH", dir.path().toLocal8Bit());
+        const QString error = backend.saveSignature("Fresh", QString(), "new");
+        qputenv("PATH", searchPath);
+        QVERIFY(!error.isEmpty());
+        QVERIFY(!library.contains("Fresh"));
+
+        // Nor does a signature that can't be saved leave its new certificate behind.
+        const int before = Signer::certificates().size();
+        QVERIFY(QDir().mkpath(library.directory()));
+        QVERIFY(QFile::setPermissions(library.directory(), QFile::ReadOwner | QFile::ExeOwner));
+        if (!QFileInfo(library.directory()).isWritable()) {
+            QVERIFY(!backend.saveSignature("Fresh", QString(), "new").isEmpty());
+            QCOMPARE(Signer::certificates().size(), before);
+        }
+        QFile::setPermissions(library.directory(), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
     }
 
     void savingSealsOnlySignaturesGivenACertificate() {
@@ -703,7 +761,7 @@ private slots:
         settings.setValue("signatureKey/David", Signer::certificates().at(0).nickname);
         const QString sealed = dir.filePath("sealed.pdf");
         QVERIFY(backend.saveTo(sealed));
-        QVERIFY(backend.notice().contains(QStringLiteral("signed with Test User")));
+        QVERIFY(backend.notice().contains(QStringLiteral("signed with #1 Morgan, Ærø")));
         QCOMPARE(int(Poppler::Document::load(sealed)->signatures().size()), 1);
     }
     void savingASignatureWithoutACertificateUnbindsIt() {
@@ -724,8 +782,11 @@ private slots:
     }
     void twoKeysOnOnePageSignTwice() {
         QString second;
-        QCOMPARE(Signer::createCertificate(QStringLiteral("Other User"), QStringLiteral("Other Org"), &second), QString());
+        // Long enough that its length takes more than one byte, and it looks like attributes of its own.
+        const QString organization = QStringLiteral("Other Org, O=Elsewhere; OU=Nowhere ") + QString(120, QLatin1Char('x'));
+        QCOMPARE(Signer::createCertificate(QStringLiteral("Other User"), organization, &second), QString());
         QVERIFY(!second.isEmpty());
+        QCOMPARE(Signer::certificates().last().organization, organization);
 
         QTemporaryDir dir;
         const QString source = dir.filePath("lease.pdf");
