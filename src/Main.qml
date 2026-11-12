@@ -36,7 +36,11 @@ ApplicationWindow {
     readonly property bool typing: activeFocusItem !== null && activeFocusItem.cursorPosition !== undefined
     readonly property bool blocked: helpVisible || confirm.visible || addSignature.visible || signatureMenu.opened
     readonly property bool canEdit: backend.hasDocument && !typing && !blocked
-    readonly property var selectedItem: selected >= 0 && backend.items.count > selected ? backend.items.get(selected) : null
+    // get() returns a copy, so this reads the revision to pick up every change to it.
+    readonly property var selectedItem: {
+        backend.items.revision;
+        return selected >= 0 && backend.items.count > selected ? backend.items.get(selected) : null;
+    }
 
     readonly property var icons: ({
         signature: "M3 17 C6 11 8 8 9 9 C10 10 7 16 9 16 C11 16 12 11 14 11 C16 11 13 15 15 15 C17 15 18 13 21 12 M3 21 L21 21",
@@ -186,15 +190,17 @@ ApplicationWindow {
     }
     // Discarding placed items always asks first.
     function guard(title, action) {
-        if (backend.dirty && backend.items.count > 0)
+        if (backend.dirty)
             confirm.ask(title, qsTr("Your signatures and text haven't been saved to a signed copy yet."), qsTr("Discard"), action);
         else
             action();
     }
     function openPdf(url) {
+        // Text being edited is finished first, which closes its undo step and
+        // counts it as unsaved work.
+        finishEditing();
         guard(qsTr("Open another PDF?"), () => {
             selected = -1;
-            editingRow = -1;
             if (url)
                 backend.openUrl(url);
             else
@@ -212,7 +218,7 @@ ApplicationWindow {
     }
 
     onClosing: (close) => {
-        if (quitting || !backend.dirty || backend.items.count === 0)
+        if (quitting || !backend.dirty)
             return;
         close.accepted = false;
         confirm.ask(qsTr("Quit without saving?"), qsTr("Your signatures and text haven't been saved to a signed copy yet."), qsTr("Quit"), () => {
@@ -305,7 +311,7 @@ ApplicationWindow {
                 Layout.maximumWidth: topBar.width - tools.width - 80
             }
             Rectangle {
-                visible: backend.dirty && backend.items.count > 0
+                visible: backend.dirty
                 width: 7
                 height: 7
                 radius: 3.5
@@ -389,7 +395,11 @@ ApplicationWindow {
                     id: page
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: 76
-                    height: Math.round(76 * backend.pageHeight(thumb.index) / backend.pageWidth(thumb.index))
+                    // Read again for every document, like the page beside it.
+                    height: {
+                        backend.generation;
+                        return Math.round(76 * backend.pageHeight(thumb.index) / backend.pageWidth(thumb.index));
+                    }
                     color: "white"
                     opacity: thumb.current ? 1 : 0.85
 
@@ -555,7 +565,7 @@ ApplicationWindow {
                 let s = qsTr("Page %1 of %2").arg(win.number(win.currentPage + 1)).arg(win.number(backend.pageCount));
                 if (items > 0)
                     s += " · " + qsTr("%Ln items", "", items);
-                if (backend.dirty && items > 0)
+                if (backend.dirty)
                     s += " · <font color=\"" + win.accent + "\">" + qsTr("unsaved") + "</font>";
                 if (win.zoom !== 1)
                     s += " · " + qsTr("%1%").arg(win.number(Math.round(win.zoom * 100)));

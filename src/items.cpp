@@ -196,6 +196,7 @@ void ItemModel::setText(int row, const QString &text) {
         return;
     record();
     m_items[row].text = text;
+    clamp(m_items[row]);
     changed(row);
 }
 

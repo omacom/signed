@@ -512,6 +512,11 @@ private slots:
         QCOMPARE(items.items().at(row).y, 742.0);
         items.move(row, 600, 0);
         QCOMPARE(items.items().at(row).x, 512.0);
+
+        // Text typed near the edge moves in rather than running off the page.
+        const int text = items.addText(0, 560, 100, "A", 12);
+        items.setText(text, "A line far too long to fit beside the right edge");
+        QVERIFY(items.items().at(text).x + items.items().at(text).size().width() <= 612);
     }
 
     void scalingKeepsTheShape() {
@@ -593,6 +598,26 @@ private slots:
 
         QVERIFY(backend.saveTo(dir.filePath("lease-signed.pdf")));
         QVERIFY(!backend.dirty());
+    }
+
+    void undoingBackToTheSavedCopyIsClean() {
+        QTemporaryDir dir;
+        const QString source = dir.filePath("lease.pdf");
+        writeBasePdf(source, 1);
+        QSettings settings(dir.filePath("settings.ini"), QSettings::IniFormat);
+        SignatureLibrary library(dir.filePath("signatures"));
+        Backend backend(nullptr, nullptr, &library, &settings);
+        QVERIFY(backend.openUrl(QUrl::fromLocalFile(source)));
+        const int row = backend.placeText(0, 100, 100, "Signed");
+        QVERIFY(backend.saveTo(dir.filePath("lease-signed.pdf")));
+
+        backend.items()->nudge(row, 10, 0);
+        QVERIFY(backend.dirty());
+        backend.items()->undo();
+        QVERIFY(!backend.dirty());
+        // Removing the last item is unsaved too, though nothing is left on the page.
+        backend.items()->remove(row);
+        QVERIFY(backend.dirty());
     }
 
     void placedSignatureSurvivesLibraryDeletion() {
