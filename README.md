@@ -94,14 +94,14 @@ Letter keys do nothing while you're typing.
 
 ## Build
 
-Uses Qt's own build tool, `qmake6`:
+With CMake:
 
 ```bash
 ./bin/build
 ./build/signed open some.pdf
 ```
 
-Run the tests (offscreen, including the command line) with `./bin/test`, and install as an Arch package with `./bin/install`.
+Run the tests (offscreen, including the command line) with `./bin/test`.
 
 ## License
 

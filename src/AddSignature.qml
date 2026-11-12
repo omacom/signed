@@ -18,9 +18,9 @@ Rectangle {
     property string importError: ""
     // The seal menu: off, the certificates there are, and the two ways to get
     // another.
-    readonly property var certChoices: [{id: "", label: "None"}]
+    readonly property var certChoices: [{id: "", label: qsTr("None")}]
         .concat(certs.map(cert => ({id: cert.id, label: cert.name + (cert.organization !== "" && cert.organization !== cert.name ? " · " + cert.organization : "")})))
-        .concat([{id: "new", label: "Create a certificate"}, {id: "import", label: "Import a .p12 file…"}])
+        .concat([{id: "new", label: qsTr("Create a certificate")}, {id: "import", label: qsTr("Import a .p12 file…")}])
     signal saved(string name)
 
     function open() {
@@ -86,11 +86,11 @@ Rectangle {
             anchors.margins: 24
             spacing: 0
 
-            Label { text: "Add signature"; color: "white"; font.pixelSize: 17; font.weight: Font.DemiBold }
+            Label { text: qsTr("Add signature"); color: "white"; font.pixelSize: 17; font.weight: Font.DemiBold }
             Label {
                 Layout.topMargin: 4
                 Layout.bottomMargin: 18
-                text: "Use a scan or a well-lit photo of your signature on white paper."
+                text: qsTr("Use a scan or a well-lit photo of your signature on white paper.")
                 color: "#b8b8bc"
                 font.pixelSize: 13
             }
@@ -148,7 +148,7 @@ Rectangle {
                     Label {
                         anchors.centerIn: parent
                         visible: backend.previewEmpty
-                        text: "No ink left — move the slider toward Less."
+                        text: qsTr("No ink left — move the slider toward Less.")
                         color: "#666"
                         font.pixelSize: 12
                     }
@@ -157,14 +157,14 @@ Rectangle {
 
             Label {
                 Layout.topMargin: 18
-                text: "Paper threshold"
+                text: qsTr("Paper threshold")
                 color: "#b8b8bc"
                 font.pixelSize: 12
             }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
-                Label { text: "Less"; color: "#8e8e93"; font.pixelSize: 12 }
+                Label { text: qsTr("Less"); color: "#8e8e93"; font.pixelSize: 12 }
                 Slider {
                     id: threshold
                     Layout.fillWidth: true
@@ -173,14 +173,14 @@ Rectangle {
                     value: 0.25
                     onMoved: backend.setPreviewThreshold(value)
                 }
-                Label { text: "More"; color: "#8e8e93"; font.pixelSize: 12 }
+                Label { text: qsTr("More"); color: "#8e8e93"; font.pixelSize: 12 }
             }
 
             TextField {
                 id: nameField
                 Layout.fillWidth: true
                 Layout.topMargin: 10
-                placeholderText: "Name"
+                placeholderText: qsTr("Name")
                 Material.roundedScale: theme.radius
                 onTextChanged: dialog.error = ""
                 onAccepted: dialog.save()
@@ -190,7 +190,7 @@ Rectangle {
             Label {
                 Layout.topMargin: 4
                 visible: dialog.error !== "" || dialog.replacing
-                text: dialog.error !== "" ? dialog.error : "This replaces the saved signature “" + nameField.text.trim() + "”."
+                text: dialog.error !== "" ? dialog.error : qsTr("This replaces the saved signature “%1”.").arg(nameField.text.trim())
                 color: dialog.error !== "" ? dialog.accent : "#b8b8bc"
                 font.pixelSize: 12
             }
@@ -206,11 +206,11 @@ Rectangle {
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 2
-                    Label { Layout.fillWidth: true; text: "Digital seal"; color: "white"; font.pixelSize: 13 }
+                    Label { Layout.fillWidth: true; text: qsTr("Digital seal"); color: "white"; font.pixelSize: 13 }
                     Label {
                         Layout.fillWidth: true
                         visible: dialog.certId !== ""
-                        text: "Saved copies are sealed, so any later change shows. Self-signed: it proves the file wasn't altered, not who signed it."
+                        text: qsTr("Saved copies are sealed, so any later change shows. Self-signed: it proves the file wasn't altered, not who signed it.")
                         color: "#8e8e93"
                         font.pixelSize: 12
                         wrapMode: Text.Wrap
@@ -246,7 +246,7 @@ Rectangle {
                 visible: dialog.certId === "new"
                 Layout.fillWidth: true
                 Layout.topMargin: 10
-                placeholderText: "Organization on the certificate (optional)"
+                placeholderText: qsTr("Organization on the certificate (optional)")
                 Material.roundedScale: theme.radius
                 onAccepted: dialog.save()
                 Keys.onEscapePressed: dialog.close()
@@ -267,18 +267,18 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 10
                 BarButton {
-                    text: "Choose another image…"
+                    text: qsTr("Choose another image…")
                     accent: dialog.accent
                     onClicked: backend.chooseSignatureImage()
                 }
                 Item { Layout.fillWidth: true }
                 BarButton {
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     accent: dialog.accent
                     onClicked: dialog.close()
                 }
                 BarButton {
-                    text: dialog.replacing ? "Replace signature" : "Save signature"
+                    text: dialog.replacing ? qsTr("Replace signature") : qsTr("Save signature")
                     primary: true
                     enabled: !backend.previewEmpty
                     accent: dialog.accent
@@ -329,11 +329,11 @@ Rectangle {
                 anchors.margins: 24
                 spacing: 0
 
-                Label { text: "Certificate password"; color: "white"; font.pixelSize: 17; font.weight: Font.DemiBold }
+                Label { text: qsTr("Certificate password"); color: "white"; font.pixelSize: 17; font.weight: Font.DemiBold }
                 Label {
                     Layout.topMargin: 4
                     Layout.bottomMargin: 18
-                    text: "The certificate file is protected. Its password is asked once for the import and never stored."
+                    text: qsTr("The certificate file is protected. Its password is asked once for the import and never stored.")
                     color: "#b8b8bc"
                     font.pixelSize: 13
                     wrapMode: Text.Wrap
@@ -343,7 +343,7 @@ Rectangle {
                 TextField {
                     id: passwordField
                     Layout.fillWidth: true
-                    placeholderText: "Password"
+                    placeholderText: qsTr("Password")
                     echoMode: TextInput.Password
                     Material.roundedScale: theme.radius
                     onAccepted: passwordDialog.accept()
@@ -366,12 +366,12 @@ Rectangle {
                     spacing: 10
                     Item { Layout.fillWidth: true }
                     BarButton {
-                        text: "Cancel"
+                        text: qsTr("Cancel")
                         accent: dialog.accent
                         onClicked: passwordDialog.cancel()
                     }
                     BarButton {
-                        text: "Import"
+                        text: qsTr("Import")
                         primary: true
                         accent: dialog.accent
                         accentForeground: dialog.accentForeground
@@ -387,7 +387,7 @@ Rectangle {
         function onCertificateImportNeedsPassword() { passwordDialog.open(); }
         function onCertificateImportFailed(message) {
             if (passwordDialog.visible)
-                passwordDialog.error = "That password didn't open the file.";
+                passwordDialog.error = qsTr("That password didn't open the file.");
             else
                 dialog.importError = message;
         }

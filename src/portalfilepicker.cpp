@@ -68,25 +68,25 @@ void registerPortalFilterTypes() {
 }
 
 PortalFileFilter pdfFilter() {
-    return {QStringLiteral("PDF documents"),
+    return {PortalFilePicker::tr("PDF documents"),
             {{1, QStringLiteral("application/pdf")}, {0, QStringLiteral("*.pdf")}, {0, QStringLiteral("*.PDF")}}};
 }
 
 PortalFileFilter imageFilter() {
-    return {QStringLiteral("Images"),
+    return {PortalFilePicker::tr("Images"),
             {{1, QStringLiteral("image/png")}, {1, QStringLiteral("image/jpeg")}, {1, QStringLiteral("image/webp")},
              {0, QStringLiteral("*.png")}, {0, QStringLiteral("*.jpg")}, {0, QStringLiteral("*.jpeg")},
              {0, QStringLiteral("*.webp")}}};
 }
 
 PortalFileFilter certificateFilter() {
-    return {QStringLiteral("Certificates"),
+    return {PortalFilePicker::tr("Certificates"),
             {{0, QStringLiteral("*.p12")}, {0, QStringLiteral("*.pfx")},
              {0, QStringLiteral("*.P12")}, {0, QStringLiteral("*.PFX")}}};
 }
 
 PortalFileFilter allFilter() {
-    return {QStringLiteral("All files"), {{0, QStringLiteral("*")}}};
+    return {PortalFilePicker::tr("All files"), {{0, QStringLiteral("*")}}};
 }
 
 QString portalToken() {
@@ -113,50 +113,50 @@ PortalFilePicker::PortalFilePicker(QObject *parent) : FilePicker(parent) {
 
 void PortalFilePicker::openPdf(const QString &folder) {
     QVariantMap options;
-    options.insert(QStringLiteral("accept_label"), QStringLiteral("Open"));
+    options.insert(QStringLiteral("accept_label"), tr("Open"));
     options.insert(QStringLiteral("modal"), true);
     options.insert(QStringLiteral("multiple"), false);
     options.insert(QStringLiteral("current_folder"),
                    portalPathBytes(folderOr(folder, QStandardPaths::DocumentsLocation)));
     options.insert(QStringLiteral("filters"), QVariant::fromValue(PortalFileFilters{pdfFilter(), allFilter()}));
     options.insert(QStringLiteral("current_filter"), QVariant::fromValue(pdfFilter()));
-    requestFile(QStringLiteral("OpenFile"), QStringLiteral("Open PDF"), options, Action::OpenPdf);
+    requestFile(QStringLiteral("OpenFile"), tr("Open PDF"), options, Action::OpenPdf);
 }
 
 void PortalFilePicker::openImage(const QString &folder) {
     QVariantMap options;
-    options.insert(QStringLiteral("accept_label"), QStringLiteral("Choose"));
+    options.insert(QStringLiteral("accept_label"), tr("Choose"));
     options.insert(QStringLiteral("modal"), true);
     options.insert(QStringLiteral("multiple"), false);
     options.insert(QStringLiteral("current_folder"),
                    portalPathBytes(folderOr(folder, QStandardPaths::PicturesLocation)));
     options.insert(QStringLiteral("filters"), QVariant::fromValue(PortalFileFilters{imageFilter(), allFilter()}));
     options.insert(QStringLiteral("current_filter"), QVariant::fromValue(imageFilter()));
-    requestFile(QStringLiteral("OpenFile"), QStringLiteral("Choose a Signature Image"), options, Action::OpenImage);
+    requestFile(QStringLiteral("OpenFile"), tr("Choose a Signature Image"), options, Action::OpenImage);
 }
 
 void PortalFilePicker::openCertificate(const QString &folder) {
     QVariantMap options;
-    options.insert(QStringLiteral("accept_label"), QStringLiteral("Import"));
+    options.insert(QStringLiteral("accept_label"), tr("Import"));
     options.insert(QStringLiteral("modal"), true);
     options.insert(QStringLiteral("multiple"), false);
     options.insert(QStringLiteral("current_folder"),
                    portalPathBytes(folderOr(folder, QStandardPaths::DownloadLocation)));
     options.insert(QStringLiteral("filters"), QVariant::fromValue(PortalFileFilters{certificateFilter(), allFilter()}));
     options.insert(QStringLiteral("current_filter"), QVariant::fromValue(certificateFilter()));
-    requestFile(QStringLiteral("OpenFile"), QStringLiteral("Import a Certificate"), options, Action::OpenCertificate);
+    requestFile(QStringLiteral("OpenFile"), tr("Import a Certificate"), options, Action::OpenCertificate);
 }
 
 void PortalFilePicker::savePdf(const QUrl &suggestedUrl) {
     const QFileInfo target(suggestedUrl.toLocalFile());
     QVariantMap options;
-    options.insert(QStringLiteral("accept_label"), QStringLiteral("Save"));
+    options.insert(QStringLiteral("accept_label"), tr("Save"));
     options.insert(QStringLiteral("modal"), true);
     options.insert(QStringLiteral("current_folder"), portalPathBytes(target.absolutePath()));
     options.insert(QStringLiteral("current_name"), target.fileName());
     options.insert(QStringLiteral("filters"), QVariant::fromValue(PortalFileFilters{pdfFilter()}));
     options.insert(QStringLiteral("current_filter"), QVariant::fromValue(pdfFilter()));
-    requestFile(QStringLiteral("SaveFile"), QStringLiteral("Save Signed Copy"), options, Action::Save);
+    requestFile(QStringLiteral("SaveFile"), tr("Save Signed Copy"), options, Action::Save);
 }
 
 bool PortalFilePicker::connectToRequestPath(const QString &path) {
@@ -178,7 +178,7 @@ void PortalFilePicker::requestFile(const QString &method, const QString &title,
                           QStringLiteral("org.freedesktop.portal.FileChooser"),
                           bus);
     if (!portal.isValid()) {
-        emit failed(QStringLiteral("The XDG desktop portal file chooser is not available."));
+        emit failed(tr("The XDG desktop portal file chooser is not available."));
         return;
     }
 
@@ -195,7 +195,7 @@ void PortalFilePicker::requestFile(const QString &method, const QString &title,
     m_pendingAction = action;
     if (!connectToRequestPath(predictedPath)) {
         clearPending();
-        emit failed(QStringLiteral("Could not listen for the portal file picker response."));
+        emit failed(tr("Could not listen for the portal file picker response."));
         return;
     }
 
@@ -212,7 +212,7 @@ void PortalFilePicker::requestFile(const QString &method, const QString &title,
 
         if (reply.isError()) {
             clearPending();
-            emit failed(QStringLiteral("The portal file picker failed: %1")
+            emit failed(tr("The portal file picker failed: %1")
                             .arg(reply.error().message()));
             return;
         }
@@ -227,7 +227,7 @@ void PortalFilePicker::requestFile(const QString &method, const QString &title,
                 this, SLOT(handleResponse(uint,QVariantMap)));
             if (!connectToRequestPath(actualPath)) {
                 clearPending();
-                emit failed(QStringLiteral("Could not listen for the portal file picker response."));
+                emit failed(tr("Could not listen for the portal file picker response."));
             }
         }
     });

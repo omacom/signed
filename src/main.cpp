@@ -17,6 +17,7 @@
 #include "signatures.h"
 #include "textitem.h"
 #include "theme.h"
+#include "translator.h"
 
 int main(int argc, char *argv[]) {
     // Commands and help draw no window, so they must not need a display, even
@@ -54,6 +55,11 @@ int main(int argc, char *argv[]) {
     QQuickStyle::setStyle("Material");
     qmlRegisterType<TextItem>("Signed", 1, 0, "TextItem");
 
+    // Only the window is translated: the commands' output is read by scripts
+    // and agents, so it stays English. Installed before anything is shown.
+    Translator translator;
+    app.installTranslator(&translator);
+
     Theme theme;
     QSettings settings;
     PortalFilePicker picker;
@@ -62,6 +68,7 @@ int main(int argc, char *argv[]) {
     Backend backend(&picker, pages, &signatures, &settings);
 
     QQmlApplicationEngine engine;
+    QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
     // The engine takes ownership of the image providers.
     engine.addImageProvider("pages", pages);
     engine.addImageProvider("items", new FunctionImageProvider([&backend](const QString &id) {
@@ -70,6 +77,7 @@ int main(int argc, char *argv[]) {
     engine.addImageProvider("preview", new FunctionImageProvider([&backend](const QString &id) {
         return backend.previewImage(id);
     }));
+    engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("backend", &backend);
     engine.load(QUrl("qrc:/Main.qml"));

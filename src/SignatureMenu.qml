@@ -55,7 +55,7 @@ Popup {
                 visible: list.count === 0
                 width: parent.width
                 padding: 10
-                text: "Add an image of your signature — a scan or a photo of it on white paper."
+                text: qsTr("Add an image of your signature — a scan or a photo of it on white paper.")
                 wrapMode: Text.WordWrap
                 color: "#b8b8bc"
                 font.pixelSize: 13
@@ -146,7 +146,7 @@ Popup {
                 Label {
                     x: 12
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "+ Add signature…"
+                    text: qsTr("+ Add signature…")
                     color: menu.accent
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
