@@ -65,6 +65,8 @@ public:
     Q_INVOKABLE void resize(int row, qreal width);
     Q_INVOKABLE void scaleBy(int row, qreal factor);
     Q_INVOKABLE void nudge(int row, qreal dx, qreal dy);
+    // Moves the item onto another page, clamped so it still fits.
+    Q_INVOKABLE void moveToPage(int row, int page);
     Q_INVOKABLE void setText(int row, const QString &text);
     Q_INVOKABLE void remove(int row);
     Q_INVOKABLE int duplicate(int row);

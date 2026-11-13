@@ -71,6 +71,7 @@ To teach your coding agents about Signed, run `signed skill install`. It copies 
 | *Delete*, *Backspace*, *X* | Remove the selection |
 | *Esc* | Deselect / stop editing |
 | *Page Up* / *Page Down* | Previous / next page |
+| *Alt+Page Up* / *Alt+Page Down* | Move the selection onto the previous / next page |
 | *Ctrl+=* / *Ctrl+-* / *Ctrl+0* | Zoom in / out / fit (or *Ctrl+scroll*) |
 | *Ctrl+Z* / *Ctrl+Shift+Z* | Undo / redo |
 | *Q* | Quit (asks first if there's anything unsaved) |
