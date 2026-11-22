@@ -66,6 +66,7 @@ To teach your coding agents about Signed, run `signed skill install`. It copies 
 | *D* | Place today's date |
 | *Enter* | Edit the selected text |
 | *Arrows* / *Shift+Arrows* | Nudge the selection 1 pt / 10 pt |
+| *C* | Center the selection on its page |
 | *[* / *]* | Make the selection smaller / larger |
 | *Ctrl+D* | Duplicate the selection |
 | *Delete*, *Backspace*, *X* | Remove the selection |
