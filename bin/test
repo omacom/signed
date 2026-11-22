@@ -5,3 +5,24 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 "$root/bin/build"
 QT_QPA_PLATFORM=offscreen ctest --test-dir "$root/build" --output-on-failure --no-tests=error "$@"
+
+if command -v qmake6 >/dev/null 2>&1; then
+  QMAKE=qmake6
+elif command -v qmake >/dev/null 2>&1; then
+  QMAKE=qmake
+else
+  echo "qmake6 or qmake is required to test signed." >&2
+  exit 1
+fi
+
+if [ -f "$root/tests/scroll_tests.pro" ]; then
+  mkdir -p "$root/build/scroll-tests"
+  (
+    cd "$root/build/scroll-tests"
+    "$QMAKE" "$root/tests/scroll_tests.pro"
+    make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
+    QT_QPA_PLATFORM=offscreen ./scroll_tests
+  )
+fi
+
+python3 -m unittest discover -s "$root/tests" -p 'test_*.py'
