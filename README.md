@@ -61,6 +61,7 @@ To teach your coding agents about Signed, run `signed skill install`. It copies 
 | *Ctrl+O* | Open a PDF |
 | *Ctrl+S* | Save a signed copy |
 | *S* | Place the last-used signature |
+| *I* | Place the signature named Initials |
 | *Shift+S* | Open the signature menu |
 | *T* | Place text |
 | *D* | Place today's date |
