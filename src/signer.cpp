@@ -1,10 +1,12 @@
 #include "signer.h"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QProcess>
+#include <QSet>
 #include <QStandardPaths>
 #include <QUuid>
 #include <QRandomGenerator>
@@ -15,6 +17,14 @@
 
 #include <poppler-form.h>
 #include <poppler-qt6.h>
+
+// NSS's headers have a `slots` member and Qt has a `slots` macro.
+#undef slots
+#include <cert.h>
+#include <keyhi.h>
+#include <nss.h>
+#include <p12.h>
+#include <pk11pub.h>
 
 namespace Signer {
 
@@ -68,6 +78,151 @@ QString subjectValue(const QString &value) {
     if (text.size() >= 0x80)
         length.prepend(char(0x80 | length.size()));
     return QLatin1Char('#') + QString::fromLatin1((QByteArray(1, '\x0c') + length + text).toHex());
+}
+
+QByteArray fingerprint(const QByteArray &der) {
+    return QCryptographicHash::hash(der, QCryptographicHash::Sha256);
+}
+
+// NSS wants the PKCS#12 password as UTF-16, big-endian, with its terminating
+// NUL, the same way pk12util converts the password file.
+QByteArray p12Password(const QString &password) {
+    QByteArray bytes;
+    bytes.reserve(password.size() * 2 + 2);
+    for (const QChar character : password) {
+        const ushort code = character.unicode();
+        bytes.append(char(code >> 8));
+        bytes.append(char(code & 0xff));
+    }
+    bytes.append('\0');
+    bytes.append('\0');
+    return bytes;
+}
+
+// Every certificate in the .p12, deduplicated by fingerprint. This is what
+// pk12util should have imported; keeping our own list means a chain is not at
+// the mercy of the tool's certificate-bag handling.
+QList<QByteArray> p12Certificates(const QString &path, const QString &password) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    const QByteArray data = file.readAll();
+    if (data.isEmpty())
+        return {};
+
+    PK11SlotInfo *slot = PK11_GetInternalKeySlot();
+    if (!slot)
+        return {};
+
+    QList<QByteArray> result;
+    QSet<QByteArray> seen;
+    const QByteArray unicode = p12Password(password);
+    QList<QByteArray> attempts;
+    if (password.isEmpty())
+        attempts << QByteArray() << unicode;
+    else
+        attempts << unicode;
+
+    for (const QByteArray &attempt : attempts) {
+        SECItem passwordItem{siBuffer, reinterpret_cast<unsigned char *>(const_cast<char *>(attempt.constData())),
+                             static_cast<unsigned int>(attempt.size())};
+        SEC_PKCS12DecoderContext *context =
+            SEC_PKCS12DecoderStart(&passwordItem, slot, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+        if (!context)
+            continue;
+        SEC_PKCS12DecoderSetMaxInputSize(context, static_cast<unsigned long>(data.size()) + 1);
+        const bool decoded =
+            SEC_PKCS12DecoderUpdate(context, reinterpret_cast<unsigned char *>(const_cast<char *>(data.constData())),
+                                    static_cast<unsigned long>(data.size())) == SECSuccess &&
+            SEC_PKCS12DecoderVerify(context) == SECSuccess;
+        if (decoded) {
+            CERTCertList *certificates = SEC_PKCS12DecoderGetCerts(context);
+            if (certificates) {
+                for (CERTCertListNode *node = CERT_LIST_HEAD(certificates); !CERT_LIST_END(node, certificates);
+                     node = CERT_LIST_NEXT(node)) {
+                    const SECItem &der = node->cert->derCert;
+                    const QByteArray bytes(reinterpret_cast<const char *>(der.data), static_cast<qsizetype>(der.len));
+                    const QByteArray id = fingerprint(bytes);
+                    if (!seen.contains(id)) {
+                        seen.insert(id);
+                        result.append(bytes);
+                    }
+                }
+                CERT_DestroyCertList(certificates);
+            }
+        }
+        SEC_PKCS12DecoderFinish(context);
+        if (decoded)
+            break;
+    }
+
+    PK11_FreeSlot(slot);
+    return result;
+}
+
+bool inCertificateDatabase(const QByteArray &der) {
+    SECItem item{siBuffer, reinterpret_cast<unsigned char *>(const_cast<char *>(der.constData())),
+                 static_cast<unsigned int>(der.size())};
+    CERTCertificate *certificate = CERT_FindCertByDERCert(CERT_GetDefaultCertDB(), &item);
+    if (!certificate)
+        return false;
+    CERT_DestroyCertificate(certificate);
+    return true;
+}
+
+bool isSelfSigned(const QByteArray &der) {
+    SECItem item{siBuffer, reinterpret_cast<unsigned char *>(const_cast<char *>(der.constData())),
+                 static_cast<unsigned int>(der.size())};
+    CERTCertificate *certificate = CERT_NewTempCertificate(CERT_GetDefaultCertDB(), &item, nullptr, PR_FALSE, PR_TRUE);
+    if (!certificate)
+        return false;
+    bool selfSigned = CERT_CompareName(&certificate->subject, &certificate->issuer) == SECEqual;
+    if (selfSigned) {
+        // Matching names are not enough: during a CA key rollover an
+        // intermediate can have the same subject and issuer as the old CA
+        // while being signed by the old key. Verify the self-signature before
+        // treating it as a root and leaving it out of the seal.
+        SECKEYPublicKey *publicKey = CERT_ExtractPublicKey(certificate);
+        selfSigned = publicKey &&
+                     CERT_VerifySignedDataWithPublicKey(&certificate->signatureWrap, publicKey, nullptr) == SECSuccess;
+        if (publicKey)
+            SECKEY_DestroyPublicKey(publicKey);
+    }
+    CERT_DestroyCertificate(certificate);
+    return selfSigned;
+}
+
+// pk12util imports the key and usually the whole chain. Import every
+// certificate it left behind as an untrusted public certificate, so NSS can
+// build the chain that poppler puts in the PDF signature. Nothing here becomes
+// a trust anchor.
+QString importMissingCertificates(const QList<QByteArray> &certificates) {
+    const QString database = QStringLiteral("sql:") + databaseDir();
+    for (const QByteArray &der : certificates) {
+        // A self-signed root is a trust anchor, not an intermediate. Adding it
+        // here would also make poppler put it in the CMS, which is not needed.
+        if (isSelfSigned(der) || inCertificateDatabase(der))
+            continue;
+
+        QTemporaryFile file(QDir::tempPath() + QStringLiteral("/signed-cert-XXXXXX.der"));
+        if (!file.open() || file.write(der) != der.size() || !file.flush())
+            return tr("the certificate couldn't be imported.");
+        const QString path = file.fileName();
+        file.close();
+
+        const QString alias = QStringLiteral("signed-chain-") +
+                              QString::fromLatin1(fingerprint(der).toHex().left(32));
+        QProcess process;
+        process.start(QStringLiteral("certutil"),
+                      {QStringLiteral("-A"), QStringLiteral("-d"), database, QStringLiteral("-n"), alias,
+                       QStringLiteral("-t"), QStringLiteral(",,"), QStringLiteral("-i"), path});
+        if (!process.waitForFinished(30000) || process.exitStatus() != QProcess::NormalExit ||
+            process.exitCode() != 0)
+            return tr("the certificate couldn't be imported.");
+        if (!inCertificateDatabase(der))
+            return tr("the certificate couldn't be imported.");
+    }
+    return {};
 }
 }
 QList<Certificate> certificates() {
@@ -148,6 +303,12 @@ QString importCertificate(const QString &path, const QString &password,
     if (const QString failure = ensureBackend(true); !failure.isEmpty())
         return failure;
 
+    // Read the .p12's certificate bags before pk12util touches the database.
+    // The list is used after the import to add any intermediate certificates
+    // pk12util did not carry across, so the NSS chain poppler signs with is
+    // complete. A wrong or missing password is left for pk12util to report.
+    QList<QByteArray> bundleCertificates = p12Certificates(path, password);
+
     const QList<Certificate> before = certificates();
 
     // A password goes through a private file rather than the command line,
@@ -176,6 +337,14 @@ QString importCertificate(const QString &path, const QString &password,
         const QString output = QString::fromLocal8Bit(process.readAllStandardError().trimmed());
         return tr("import failed (exit %1, file %2): %3")
             .arg(process.exitCode()).arg(path, output);
+    }
+
+    if (bundleCertificates.isEmpty())
+        bundleCertificates = p12Certificates(path, password);
+    if (!bundleCertificates.isEmpty()) {
+        const QString failure = importMissingCertificates(bundleCertificates);
+        if (!failure.isEmpty())
+            return failure;
     }
 
     // The nickname comes from the file; find what's new since the import.

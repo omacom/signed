@@ -14,6 +14,9 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 DBus Test
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(POPPLER REQUIRED IMPORTED_TARGET poppler-qt6)
 pkg_check_modules(QPDF REQUIRED IMPORTED_TARGET libqpdf)
+# The NSS PKCS#12 decoder gives us every certificate in an imported .p12,
+# including intermediates that pk12util may not have imported.
+pkg_check_modules(NSS REQUIRED IMPORTED_TARGET nss)
 
 # Everything but main.cpp, shared by the app and the tests, so each source
 # compiles once and a new file in src/ needs no line here.
@@ -23,7 +26,7 @@ add_library(signed_core STATIC ${signed_sources})
 target_include_directories(signed_core PUBLIC src)
 target_link_libraries(signed_core PUBLIC
   Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus
-  PkgConfig::POPPLER PkgConfig::QPDF)
+  PkgConfig::POPPLER PkgConfig::QPDF PkgConfig::NSS)
 target_compile_options(signed_core PUBLIC -Wall -Wextra)
 
 add_executable(signed src/main.cpp src/resources.qrc)

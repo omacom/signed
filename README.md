@@ -29,11 +29,11 @@ A signature can also seal the copies you save with it. Sealing is off by default
 
 - **Create a certificate** makes a new one for that signature, named after it, with an optional organization.
 - An existing certificate can be picked from the same menu, so several signatures can share one.
-- **Import a .p12 file…** brings in a certificate from elsewhere. Its password is asked once for the import and never stored.
+- **Import a .p12 file…** brings in a certificate from elsewhere, together with the intermediate certificates in the file. Its password is asked once for the import and never stored.
 
-A sealed copy carries an invisible PKCS#7 signature over the whole document, the kind every PDF viewer understands, so any change made after you saved it shows up there. Copies saved with an unsealed signature are saved as before.
+A sealed copy carries an invisible PKCS#7 signature over the whole document, the kind every PDF viewer understands, so any change made after you saved it shows up there. The intermediate certificates are inside that signature too, so a viewer that only has the root certificate can still validate the copy. Copies saved with an unsealed signature are saved as before.
 
-The certificates are self-signed, so a seal proves the file wasn't changed, not who signed it, and some PDF viewers say its signer is unknown. They're stored without a password in `~/.local/share/signed/certificates/`, which is created only once you make or import one: sealing never prompts, but anyone using this computer can seal with them.
+The certificates Signed creates are self-signed, so a seal proves the file wasn't changed, not who signed it, and some PDF viewers say its signer is unknown. They're stored without a password in `~/.local/share/signed/certificates/`, which is created only once you make or import one: sealing never prompts, but anyone using this computer can seal with them.
 
 ## Use Signed from the command line
 
