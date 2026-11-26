@@ -30,6 +30,7 @@ class Backend : public QObject {
     Q_PROPERTY(int previewRevision READ previewRevision NOTIFY previewChanged)
     Q_PROPERTY(bool previewEmpty READ previewEmpty NOTIFY previewChanged)
     Q_PROPERTY(QString previewName READ previewName NOTIFY previewChanged)
+    Q_PROPERTY(bool passwordProtectionEnabled READ passwordProtectionEnabled CONSTANT)
 
 public:
     Backend(FilePicker *picker, PageProvider *pages, SignatureLibrary *signatures,
@@ -49,7 +50,11 @@ public:
     int previewRevision() const { return m_previewRevision; }
     bool previewEmpty() const { return m_preview.isNull(); }
     QString previewName() const { return m_previewName; }
+    bool passwordProtectionEnabled() const { return m_passwordProtectionEnabled; }
     QImage previewImage(const QString &which) const;
+
+    // "absent", "unprotected", or "protected". This does not prompt.
+    Q_INVOKABLE QString certificateStoreState() const;
 
     Q_INVOKABLE qreal pageWidth(int page) const;
     Q_INVOKABLE qreal pageHeight(int page) const;
@@ -58,7 +63,10 @@ public:
     Q_INVOKABLE bool openUrl(const QUrl &url);
     Q_INVOKABLE void save();
     // Writes the signed copy; public so tests can save without a dialog.
-    bool saveTo(const QString &target);
+    // storePassword is needed only when sealing with a protected store.
+    bool saveTo(const QString &target, const QString &storePassword = {});
+    Q_INVOKABLE void saveWithPassword(const QString &storePassword);
+    Q_INVOKABLE void cancelPendingSave();
 
     // Placement takes the center point (or, for text starting at the mouse,
     // the left edge's midpoint); returns the new item's row.
@@ -73,7 +81,8 @@ public:
     // Saving a signature can bind a certificate: an existing one by id, or
     // "new" for a fresh self-signed one (Common Name = name, Organization =
     // organization). No id means no certificate, and an unsigned copy.
-    Q_INVOKABLE QString saveSignature(const QString &name, const QString &organization = {}, const QString &certId = {});
+    Q_INVOKABLE QString saveSignature(const QString &name, const QString &organization = {}, const QString &certId = {},
+                                      const QString &storePassword = {});
     Q_INVOKABLE void removeSignature(const QString &name);
     Q_INVOKABLE void clearNotice();
 
@@ -86,6 +95,7 @@ public:
     // opens the file picker; when the file is password-protected,
     // certImportNeedsPassword() asks for it and importCertificatePassword() retries.
     Q_INVOKABLE void importCertificate();
+    Q_INVOKABLE void importCertificateWithStorePassword(const QString &storePassword);
     Q_INVOKABLE void importCertificatePassword(const QString &password);
     Q_INVOKABLE void cancelImport();
 
@@ -101,12 +111,14 @@ signals:
     void certificateImportNeedsPassword();
     void certificateImported(QString nickname);
     void certificateImportFailed(QString message);
+    void certificatePasswordRequired();
+    void certificatePasswordRejected();
     void saved();
 
 private:
     void setNotice(const QString &notice);
     void updatePreview();
-    void import(const QString &path, const QString &password);
+    void import(const QString &path, const QString &filePassword, const QString &storePassword);
     qreal textSize() const;
 
     FilePicker *m_picker;
@@ -128,4 +140,7 @@ private:
     qreal m_previewThreshold = .25;
     int m_previewRevision = 0;
     QString m_pendingImport;
+    QString m_pendingImportStorePassword;
+    QString m_pendingSave;
+    bool m_passwordProtectionEnabled = false;
 };

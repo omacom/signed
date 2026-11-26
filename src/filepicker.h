@@ -22,5 +22,6 @@ signals:
     void imageSelected(const QUrl &url);
     void p12Selected(const QUrl &url);
     void saveSelected(const QUrl &url);
+    void cancelled();
     void failed(const QString &message);
 };

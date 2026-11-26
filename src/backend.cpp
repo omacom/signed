@@ -31,6 +31,7 @@ bool samePath(const QString &a, const QString &b) {
 Backend::Backend(FilePicker *picker, PageProvider *pages, SignatureLibrary *signatures,
                  QSettings *settings, QObject *parent)
     : QObject(parent), m_picker(picker), m_pages(pages), m_signatures(signatures), m_settings(settings) {
+    m_passwordProtectionEnabled = m_settings->value("certificateStore/passwordProtected", false).toBool();
     connect(&m_items, &ItemModel::revisionChanged, this, &Backend::dirtyChanged);
     if (m_picker) {
         connect(m_picker, &FilePicker::pdfSelected, this, [this](const QUrl &url) { openUrl(url); });
@@ -40,15 +41,35 @@ Backend::Backend(FilePicker *picker, PageProvider *pages, SignatureLibrary *sign
         });
         connect(m_picker, &FilePicker::p12Selected, this, [this](const QUrl &url) {
             m_settings->setValue("certFolder", QFileInfo(url.toLocalFile()).absolutePath());
-            import(url.toLocalFile(), QString());
+            import(url.toLocalFile(), QString(), m_pendingImportStorePassword);
         });
         connect(m_picker, &FilePicker::saveSelected, this, [this](const QUrl &url) { saveTo(url.toLocalFile()); });
-        connect(m_picker, &FilePicker::failed, this, &Backend::setNotice);
+        connect(m_picker, &FilePicker::cancelled, this, [this] {
+            m_pendingImport.clear();
+            m_pendingImportStorePassword.clear();
+        });
+        connect(m_picker, &FilePicker::failed, this, [this](const QString &message) {
+            m_pendingImport.clear();
+            m_pendingImportStorePassword.clear();
+            setNotice(message);
+        });
     }
 }
 
 QString Backend::fileName() const {
     return QFileInfo(m_path).fileName();
+}
+
+QString Backend::certificateStoreState() const {
+    switch (Signer::storeState()) {
+    case Signer::StoreState::Absent:
+        return QStringLiteral("absent");
+    case Signer::StoreState::Protected:
+        return QStringLiteral("protected");
+    case Signer::StoreState::Unprotected:
+        break;
+    }
+    return QStringLiteral("unprotected");
 }
 
 qreal Backend::widestPage() const {
@@ -139,7 +160,7 @@ void Backend::save() {
     m_picker->savePdf(QUrl::fromLocalFile(source.absoluteDir().filePath(source.completeBaseName() + "-signed.pdf")));
 }
 
-bool Backend::saveTo(const QString &target) {
+bool Backend::saveTo(const QString &target, const QString &storePassword) {
     if (!hasDocument() || target.isEmpty())
         return false;
     if (samePath(target, m_path)) {
@@ -147,19 +168,8 @@ bool Backend::saveTo(const QString &target) {
         return false;
     }
 
-    const QList<Item> items = m_items.items();
-    const Stamper::Result result = Stamper::stamp(m_path, target, m_items.stamps());
-    if (!result.error.isEmpty()) {
-        setNotice(tr("Couldn't save: %1").arg(result.error));
-        return false;
-    }
-    m_savedItems = items;
-    emit dirtyChanged();
-    emit saved();
-
     // The cryptographic layer is opt-in: only a signature someone gave a
-    // certificate signs the copy, one pass per distinct certificate. A
-    // failure never loses the save.
+    // certificate signs the copy, one pass per distinct certificate.
     QSet<QString> boundKeys;
     for (const Item &item : m_items.items()) {
         if (item.kind != Item::Signature)
@@ -168,6 +178,42 @@ bool Backend::saveTo(const QString &target) {
         if (!key.isEmpty())
             boundKeys.insert(key);
     }
+
+    bool unlocked = false;
+    if (!boundKeys.isEmpty() && Signer::storeState() == Signer::StoreState::Protected) {
+        if (storePassword.isEmpty()) {
+            m_pendingSave = target;
+            emit certificatePasswordRequired();
+            return false;
+        }
+        if (Signer::unlock(storePassword) != Signer::UnlockResult::Ok) {
+            emit certificatePasswordRejected();
+            return false;
+        }
+        unlocked = true;
+    }
+
+    struct StoreLocker {
+        bool unlocked;
+        ~StoreLocker() {
+            if (unlocked)
+                Signer::lock();
+        }
+    } locker{unlocked};
+
+    const QList<Item> items = m_items.items();
+    const Stamper::Result result = Stamper::stamp(m_path, target, m_items.stamps());
+    if (!result.error.isEmpty()) {
+        setNotice(tr("Couldn't save: %1").arg(result.error));
+        m_pendingSave.clear();
+        return false;
+    }
+    m_savedItems = items;
+    m_pendingSave.clear();
+    emit dirtyChanged();
+    emit saved();
+
+    // A failure never loses the save.
     const QList<Signer::Certificate> available = boundKeys.isEmpty() ? QList<Signer::Certificate>() : Signer::certificates();
     QString failure;
     bool cancelled = false;
@@ -204,6 +250,16 @@ bool Backend::saveTo(const QString &target) {
     else
         setNotice(result.warning.isEmpty() ? tr("Saved %1").arg(QFileInfo(target).fileName()) : result.warning);
     return true;
+}
+
+void Backend::saveWithPassword(const QString &storePassword) {
+    const QString target = m_pendingSave;
+    if (!target.isEmpty())
+        saveTo(target, storePassword);
+}
+
+void Backend::cancelPendingSave() {
+    m_pendingSave.clear();
 }
 
 QString Backend::lastSignature() const {
@@ -304,7 +360,8 @@ QImage Backend::previewImage(const QString &which) const {
     return which.startsWith(QLatin1String("source")) ? m_previewSource : m_preview;
 }
 
-QString Backend::saveSignature(const QString &name, const QString &organization, const QString &certId) {
+QString Backend::saveSignature(const QString &name, const QString &organization, const QString &certId,
+                               const QString &storePassword) {
     if (const QString invalid = m_signatures->validateName(name); !invalid.isEmpty())
         return invalid;
     if (m_preview.isNull())
@@ -316,7 +373,7 @@ QString Backend::saveSignature(const QString &name, const QString &organization,
     // first, so failing to make it leaves the saved signature as it was.
     QString bound = certId;
     if (bound == QLatin1String("new")) {
-        const QString failure = Signer::createCertificate(name, organization, &bound);
+        const QString failure = Signer::createCertificate(name, organization, &bound, storePassword);
         if (!failure.isEmpty())
             return failure;
     }
@@ -324,7 +381,7 @@ QString Backend::saveSignature(const QString &name, const QString &organization,
     const QString error = m_signatures->add(name, m_preview);
     if (!error.isEmpty()) {
         if (certId == QLatin1String("new"))
-            Signer::removeCertificate(bound);
+            Signer::removeCertificate(bound, storePassword);
         return error;
     }
     // A replaced signature should start at its new natural size.
@@ -354,6 +411,11 @@ void Backend::removeSignature(const QString &name) {
 }
 
 void Backend::importCertificate() {
+    importCertificateWithStorePassword({});
+}
+
+void Backend::importCertificateWithStorePassword(const QString &storePassword) {
+    m_pendingImportStorePassword = storePassword;
     if (m_picker)
         m_picker->openCertificate(m_settings->value("certFolder").toString());
 }
@@ -361,29 +423,35 @@ void Backend::importCertificate() {
 void Backend::importCertificatePassword(const QString &password) {
     // copy: import() clears m_pendingImport, which would reach this string
     const QString path = m_pendingImport;
-    import(path, password);
+    import(path, password, m_pendingImportStorePassword);
 }
 
 void Backend::cancelImport() {
     m_pendingImport.clear();
+    m_pendingImportStorePassword.clear();
 }
 
-void Backend::import(const QString &path, const QString &password) {
+void Backend::import(const QString &path, const QString &filePassword, const QString &storePassword) {
     if (path.isEmpty())
         return;
     m_pendingImport.clear();
     bool needsPassword = false;
     QString nickname;
-    const QString error = Signer::importCertificate(path, password, &needsPassword, &nickname);
+    const QString error = Signer::importCertificate(path, filePassword, &needsPassword, &nickname, storePassword);
     if (error.isEmpty()) {
+        m_pendingImportStorePassword.clear();
         emit certificateImported(nickname);
     } else if (needsPassword) {
         m_pendingImport = path;
         emit certificateImportNeedsPassword();
     } else {
-        // A wrong password can be tried again.
-        if (!password.isEmpty())
+        // A non-empty file password means the user can retry in the file
+        // password dialog. Otherwise the import is over; drop the store
+        // password rather than keeping it in memory.
+        if (!filePassword.isEmpty())
             m_pendingImport = path;
+        else
+            m_pendingImportStorePassword.clear();
         emit certificateImportFailed(error);
     }
 }

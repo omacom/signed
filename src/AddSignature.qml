@@ -17,6 +17,8 @@ Rectangle {
     property string certId: ""         // "" is no seal, "new" makes a certificate on save
     property bool certChosen: false    // picked in the menu, so typing a name no longer changes it
     property string importError: ""
+    property string storeState: ""
+    property string pendingAction: ""
     // The seal menu: off, the certificates there are, and the two ways to get
     // another.
     readonly property var certChoices: [{id: "", label: qsTr("None")}]
@@ -34,6 +36,7 @@ Rectangle {
         // Replacing a signature keeps its seal; a new one starts without.
         certChosen = false;
         refreshCerts(backend.signatureKey(backend.previewName));
+        refreshStoreState();
         visible = true;
         nameField.forceActiveFocus();
         nameField.selectAll();
@@ -50,6 +53,14 @@ Rectangle {
         certId = id;
         certBox.currentIndex = certChoices.findIndex(choice => choice.id === id);
     }
+    function refreshStoreState() {
+        storeState = backend.certificateStoreState();
+    }
+    function needsStorePassword(creatingCertificate) {
+        if (storeState === "protected")
+            return true;
+        return creatingCertificate && storeState === "absent" && backend.passwordProtectionEnabled;
+    }
     function save() {
         const name = nameField.text.trim();
         const invalid = backend.signatures.validateName(name);
@@ -57,13 +68,35 @@ Rectangle {
             error = invalid;
             return;
         }
-        const failure = backend.saveSignature(name, orgField.text.trim(), certId);
+        refreshStoreState();
+        if (certId === "new" && needsStorePassword(true)) {
+            pendingAction = "save";
+            storePassword.confirm = storeState === "absent";
+            storePassword.open();
+            return;
+        }
+        finishSave("");
+    }
+    function finishSave(password) {
+        const name = nameField.text.trim();
+        pendingAction = "";
+        const failure = backend.saveSignature(name, orgField.text.trim(), certId, password);
         if (failure !== "") {
             error = failure;
             return;
         }
         close();
         saved(name);
+    }
+    function startImport() {
+        refreshStoreState();
+        if (needsStorePassword(true)) {
+            pendingAction = "import";
+            storePassword.confirm = storeState === "absent";
+            storePassword.open();
+            return;
+        }
+        backend.importCertificate();
     }
 
     readonly property bool replacing: backend.signatures.contains(nameField.text.trim())
@@ -241,7 +274,7 @@ Rectangle {
                     onActivated: {
                         const id = currentValue;
                         if (id === "import") {
-                            backend.importCertificate();
+                            dialog.startImport();
                             dialog.selectCert(dialog.certId);  // stays put until the import lands
                         } else {
                             dialog.certChosen = true;
@@ -392,6 +425,19 @@ Rectangle {
         }
     }
 
+    CertificatePassword {
+        id: storePassword
+        accent: dialog.accent
+        accentForeground: dialog.accentForeground
+        onAccepted: (password) => {
+            if (dialog.pendingAction === "import")
+                backend.importCertificateWithStorePassword(password);
+            else
+                dialog.finishSave(password);
+        }
+        onCancelled: dialog.pendingAction = ""
+    }
+
     Connections {
         target: backend
         function onCertificateImportNeedsPassword() { passwordDialog.open(); }
@@ -401,6 +447,13 @@ Rectangle {
             else
                 dialog.importError = message;
         }
-        function onCertificateImported(nickname) { passwordDialog.visible = false; dialog.importError = ""; dialog.certChosen = true; dialog.refreshCerts(nickname); }
+        function onCertificateImported(nickname) {
+            passwordDialog.visible = false;
+            dialog.importError = "";
+            dialog.certChosen = true;
+            dialog.pendingAction = "";
+            dialog.refreshCerts(nickname);
+            dialog.refreshStoreState();
+        }
     }
 }

@@ -14,6 +14,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 DBus Test
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(POPPLER REQUIRED IMPORTED_TARGET poppler-qt6)
 pkg_check_modules(QPDF REQUIRED IMPORTED_TARGET libqpdf)
+pkg_check_modules(NSS REQUIRED IMPORTED_TARGET nss)
 
 # Everything but main.cpp, shared by the app and the tests, so each source
 # compiles once and a new file in src/ needs no line here.
@@ -23,7 +24,7 @@ add_library(signed_core STATIC ${signed_sources})
 target_include_directories(signed_core PUBLIC src)
 target_link_libraries(signed_core PUBLIC
   Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::DBus
-  PkgConfig::POPPLER PkgConfig::QPDF)
+  PkgConfig::POPPLER PkgConfig::QPDF PkgConfig::NSS)
 target_compile_options(signed_core PUBLIC -Wall -Wextra)
 
 add_executable(signed src/main.cpp src/resources.qrc)
@@ -34,6 +35,13 @@ add_executable(signed_tests tests/signed_tests.cpp)
 target_link_libraries(signed_tests PRIVATE signed_core Qt6::Test)
 add_test(NAME signed_tests COMMAND signed_tests)
 set_tests_properties(signed_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
+
+# A separate process because NSS and the app's store are process-global: this
+# suite needs a store that was created protected from the start.
+add_executable(password_tests tests/password_tests.cpp)
+target_link_libraries(password_tests PRIVATE signed_core Qt6::Test)
+add_test(NAME password_tests COMMAND password_tests)
+set_tests_properties(password_tests PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
 
 # The command line is tested as an agent uses it: the built binary, no
 # display. python3 is found when the tests run, so building needs none and a

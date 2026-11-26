@@ -552,7 +552,7 @@ private slots:
             if (variant == "unbalanced")
                 pages.at(1).addPageContents(QPDFObjectHandle::newStream(&pdf, "\n2 0 0 2 50 50 cm\n"), false);
             if (variant == "mixed")
-                page.replaceKey("/MediaBox", box(0, 0, 595.28, 841.89));
+                page.replaceKey("/MediaBox", box(0, 0, 596, 842));
         });
 
         // Our idea of the page agrees with poppler's, which is what's shown.
@@ -978,6 +978,7 @@ private slots:
         // A comma or a leading # in a name is part of it, not subject syntax.
         QCOMPARE(Signer::createCertificate(QStringLiteral("#1 Morgan, Ærø"), QString(), &nickname), QString());
         QVERIFY(!nickname.isEmpty());
+        QCOMPARE(Signer::storeState(), Signer::StoreState::Unprotected);
         const QList<Signer::Certificate> certs = Signer::certificates();
         QCOMPARE(certs.size(), 1);
         QCOMPARE(certs.at(0).nickname, nickname);
