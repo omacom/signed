@@ -33,7 +33,16 @@ A signature can also seal the copies you save with it. Sealing is off by default
 
 A sealed copy carries an invisible PKCS#7 signature over the whole document, the kind every PDF viewer understands, so any change made after you saved it shows up there. Copies saved with an unsealed signature are saved as before.
 
-The certificates are self-signed, so a seal proves the file wasn't changed, not who signed it, and some PDF viewers say its signer is unknown. They're stored without a password in `~/.local/share/signed/certificates/`, which is created only once you make or import one: sealing never prompts, but anyone using this computer can seal with them.
+The certificates are self-signed, so a seal proves the file wasn't changed, not who signed it, and some PDF viewers say its signer is unknown. They're stored in `~/.local/share/signed/certificates/`, which is created only once you make or import one.
+
+By default the store has no password, and sealing never prompts. To protect new certificate stores, add this to `~/.config/signed/signed.conf` and restart Signed:
+
+```ini
+[certificateStore]
+passwordProtected=true
+```
+
+Signed then asks for a password twice when making the first certificate, and once each time it seals a copy. The password isn't stored. A protected store still asks for it if the setting is later turned off. Existing unprotected stores stay unprotected.
 
 ## Use Signed from the command line
 

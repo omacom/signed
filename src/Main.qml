@@ -35,6 +35,7 @@ ApplicationWindow {
     // Single-key shortcuts must never fire while typing into a field.
     readonly property bool typing: activeFocusItem !== null && activeFocusItem.cursorPosition !== undefined
     readonly property bool blocked: helpVisible || confirm.visible || addSignature.visible || signatureMenu.opened
+        || savePassword.visible
     readonly property bool canEdit: backend.hasDocument && !typing && !blocked
     // get() returns a copy, so this reads the revision to pick up every change to it.
     readonly property var selectedItem: {
@@ -237,6 +238,10 @@ ApplicationWindow {
             pageList.positionViewAtBeginning();
         }
         function onSignatureImageReady() { addSignature.open(); }
+        function onCertificatePasswordRequired() { savePassword.confirm = false; savePassword.open(); }
+        function onCertificatePasswordRejected() {
+            savePassword.showError(qsTr("That password didn't open the certificate store."));
+        }
         function onNoticeChanged() { if (backend.notice !== "") noticeTimer.restart(); }
     }
     Connections {
@@ -656,6 +661,14 @@ ApplicationWindow {
         accent: win.accent
         accentForeground: win.accentForeground
         onSaved: (name) => win.placeSignature(name, win.pendingPoint)
+    }
+
+    CertificatePassword {
+        id: savePassword
+        accent: win.accent
+        accentForeground: win.accentForeground
+        onAccepted: (password) => backend.saveWithPassword(password)
+        onCancelled: backend.cancelPendingSave()
     }
 
     // --- hotkeys ---
