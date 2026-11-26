@@ -569,7 +569,7 @@ private slots:
             if (variant == "unbalanced")
                 pages.at(1).addPageContents(QPDFObjectHandle::newStream(&pdf, "\n2 0 0 2 50 50 cm\n"), false);
             if (variant == "mixed")
-                page.replaceKey("/MediaBox", box(0, 0, 596, 842));
+                page.replaceKey("/MediaBox", box(0, 0, 595.28, 841.89));
         });
 
         // Our idea of the page agrees with poppler's, which is what's shown.
@@ -1187,6 +1187,9 @@ private slots:
         const QString leafKey = dir.filePath("leaf.key"), leafCsr = dir.filePath("leaf.csr");
         const QString leafCert = dir.filePath("leaf.crt"), chainPem = dir.filePath("chain.pem");
         const QString chainP12 = dir.filePath("chain.p12"), leafP12 = dir.filePath("leaf.p12");
+        const QString normalLeafKey = dir.filePath("normal-leaf.key"), normalLeafCsr = dir.filePath("normal-leaf.csr");
+        const QString normalLeafCert = dir.filePath("normal-leaf.crt"), normalChainPem = dir.filePath("normal-chain.pem");
+        const QString normalP12 = dir.filePath("normal.p12");
 
         QVERIFY(runProcess("openssl", {"req", "-x509", "-newkey", "rsa:2048", "-nodes",
                                        "-keyout", rootKey, "-out", rootCert, "-days", "3650",
@@ -1227,6 +1230,12 @@ private slots:
         QVERIFY(runProcess("openssl", {"x509", "-req", "-in", leafCsr, "-CA", intermediateCert, "-CAkey", intermediateKey,
                                        "-CAcreateserial", "-out", leafCert, "-days", "1000",
                                        "-extfile", dir.filePath("leaf.ext")}));
+        QVERIFY(runProcess("openssl", {"req", "-newkey", "rsa:2048", "-nodes",
+                                       "-keyout", normalLeafKey, "-out", normalLeafCsr,
+                                       "-subj", "/CN=Signed Test Normal Leaf/O=Signed Tests"}));
+        QVERIFY(runProcess("openssl", {"x509", "-req", "-in", normalLeafCsr, "-CA", intermediateCert, "-CAkey", intermediateKey,
+                                       "-CAcreateserial", "-out", normalLeafCert, "-days", "1000",
+                                       "-extfile", dir.filePath("leaf.ext")}));
 
         // The chain .p12 carries the root too; the signature should carry only
         // the leaf and the two intermediate certificates.
@@ -1244,6 +1253,17 @@ private slots:
         // real file contains.
         QVERIFY(runProcess("openssl", {"pkcs12", "-export", "-out", leafP12, "-inkey", leafKey,
                                        "-in", leafCert, "-passout", "pass:chainpass"}));
+        QFile normalChain(normalChainPem);
+        QVERIFY(normalChain.open(QIODevice::WriteOnly));
+        for (const QString &part : {normalLeafCert, intermediateCert, upperCert, rootCert}) {
+            QFile file(part);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            normalChain.write(file.readAll());
+        }
+        normalChain.close();
+        QVERIFY(runProcess("openssl", {"pkcs12", "-export", "-out", normalP12, "-inkey", normalLeafKey,
+                                       "-in", normalLeafCert, "-certfile", normalChainPem,
+                                       "-passout", "pass:chainpass"}));
 
         const QString wrapperDir = dir.filePath("bin");
         QVERIFY(QDir().mkpath(wrapperDir));
@@ -1339,6 +1359,183 @@ private slots:
                             &validation, &validationError),
                  validationError.constData());
         QVERIFY2(validation.contains("Certificate is Trusted"), validation.constData());
+
+        // The same file, imported normally, includes the same chain. Here the
+        // real pk12util sees the root and intermediates.
+        bool normalNeedsPassword = false;
+        QString normalNickname;
+        const QString normalImportError =
+            Signer::importCertificate(normalP12, QStringLiteral("chainpass"), &normalNeedsPassword, &normalNickname);
+        QVERIFY2(normalImportError.isEmpty(), qPrintable(normalImportError));
+        QVERIFY(!normalNickname.isEmpty());
+
+        const QString normalTarget = dir.filePath("normal-signed.pdf");
+        QVERIFY(Stamper::stamp(source, normalTarget, {}).error.isEmpty());
+        const Signer::Result normalResult = Signer::sign(normalTarget, normalNickname);
+        if (!normalResult.ok)
+            QFAIL(qPrintable(QStringLiteral("normal signing failed: %1").arg(normalResult.error)));
+
+        const QString normalDumpDir = dir.filePath("normal-dump");
+        QVERIFY(QDir().mkpath(normalDumpDir));
+        QByteArray normalDumpError;
+        QVERIFY2(runProcess("pdfsig", {"-dump", "-nocert", normalTarget}, nullptr, &normalDumpError, normalDumpDir),
+                 normalDumpError.constData());
+        const QString normalBlob = QDir(normalDumpDir).filePath(QFileInfo(normalTarget).fileName() + QStringLiteral(".sig0"));
+        QVERIFY(QFile::exists(normalBlob));
+        QByteArray normalCertificates, normalOpensslError;
+        QVERIFY2(runProcess("openssl", {"pkcs7", "-inform", "DER", "-in", normalBlob, "-print_certs", "-noout"},
+                            &normalCertificates, &normalOpensslError),
+                 normalOpensslError.constData());
+        auto hasNormalSubject = [&](const QString &commonName) {
+            for (const QByteArray &line : normalCertificates.split('\n'))
+                if (line.startsWith("subject=") && line.contains(commonName.toUtf8()))
+                    return true;
+            return false;
+        };
+        QVERIFY(hasNormalSubject(QStringLiteral("Signed Test Normal Leaf")));
+        QVERIFY(hasNormalSubject(QStringLiteral("Signed Test Intermediate")));
+        QVERIFY(hasNormalSubject(QStringLiteral("Signed Test Upper Intermediate")));
+        QVERIFY(!hasNormalSubject(QStringLiteral("Signed Test Root")));
+
+        QByteArray normalValidation, normalValidationError;
+        QVERIFY2(runProcess("pdfsig", {"-nssdir", QStringLiteral("sql:") + validator, normalTarget},
+                            &normalValidation, &normalValidationError),
+                 normalValidationError.constData());
+        QVERIFY2(normalValidation.contains("Certificate is Trusted"), normalValidation.constData());
+    }
+
+    void rolloverIntermediateIsNotMistakenForRoot() {
+        if (QStandardPaths::findExecutable("openssl").isEmpty() || QStandardPaths::findExecutable("pdfsig").isEmpty())
+            QSKIP("openssl and pdfsig are needed for the rollover check");
+
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString rootKey = dir.filePath("root.key"), rootCert = dir.filePath("root.crt");
+        const QString intermediateKey = dir.filePath("intermediate.key"), intermediateCsr = dir.filePath("intermediate.csr");
+        const QString intermediateCert = dir.filePath("intermediate.crt");
+        const QString leafKey = dir.filePath("leaf.key"), leafCsr = dir.filePath("leaf.csr");
+        const QString leafCert = dir.filePath("leaf.crt"), chainPem = dir.filePath("chain.pem");
+        const QString chainP12 = dir.filePath("chain.p12"), leafP12 = dir.filePath("leaf.p12");
+
+        QVERIFY(runProcess("openssl", {"req", "-x509", "-newkey", "rsa:2048", "-nodes",
+                                       "-keyout", rootKey, "-out", rootCert, "-days", "3650",
+                                       "-subj", "/CN=Rollover CA/O=Signed Tests",
+                                       "-addext", "basicConstraints=critical,CA:TRUE",
+                                       "-addext", "keyUsage=critical,keyCertSign,cRLSign"}));
+        QVERIFY(runProcess("openssl", {"req", "-newkey", "rsa:2048", "-nodes",
+                                       "-keyout", intermediateKey, "-out", intermediateCsr,
+                                       "-subj", "/CN=Rollover CA/O=Signed Tests"}));
+        writeFile(dir.filePath("intermediate.ext"),
+                  "basicConstraints=critical,CA:TRUE,pathlen:0\n"
+                  "keyUsage=critical,keyCertSign,cRLSign\n"
+                  "subjectKeyIdentifier=hash\n"
+                  "authorityKeyIdentifier=keyid,issuer\n");
+        QVERIFY(runProcess("openssl", {"x509", "-req", "-in", intermediateCsr, "-CA", rootCert, "-CAkey", rootKey,
+                                       "-CAcreateserial", "-out", intermediateCert, "-days", "2000",
+                                       "-extfile", dir.filePath("intermediate.ext")}));
+        QVERIFY(runProcess("openssl", {"req", "-newkey", "rsa:2048", "-nodes",
+                                       "-keyout", leafKey, "-out", leafCsr,
+                                       "-subj", "/CN=Rollover Leaf/O=Signed Tests"}));
+        writeFile(dir.filePath("leaf.ext"),
+                  "basicConstraints=critical,CA:FALSE\n"
+                  "keyUsage=critical,digitalSignature,nonRepudiation\n"
+                  "subjectKeyIdentifier=hash\n"
+                  "authorityKeyIdentifier=keyid,issuer\n"
+                  "extendedKeyUsage=emailProtection\n");
+        QVERIFY(runProcess("openssl", {"x509", "-req", "-in", leafCsr, "-CA", intermediateCert, "-CAkey", intermediateKey,
+                                       "-CAcreateserial", "-out", leafCert, "-days", "1000",
+                                       "-extfile", dir.filePath("leaf.ext")}));
+
+        QFile chain(chainPem);
+        QVERIFY(chain.open(QIODevice::WriteOnly));
+        for (const QString &part : {leafCert, intermediateCert, rootCert}) {
+            QFile file(part);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            chain.write(file.readAll());
+        }
+        chain.close();
+        QVERIFY(runProcess("openssl", {"pkcs12", "-export", "-out", chainP12, "-inkey", leafKey,
+                                       "-in", leafCert, "-certfile", chainPem, "-passout", "pass:rollpass"}));
+        QVERIFY(runProcess("openssl", {"pkcs12", "-export", "-out", leafP12, "-inkey", leafKey,
+                                       "-in", leafCert, "-passout", "pass:rollpass"}));
+
+        const QString wrapperDir = dir.filePath("bin");
+        QVERIFY(QDir().mkpath(wrapperDir));
+        const QString realPk12util = QStandardPaths::findExecutable("pk12util");
+        QVERIFY(!realPk12util.isEmpty());
+        writeFile(QDir(wrapperDir).filePath("pk12util"),
+                  "#!/usr/bin/env python3\n"
+                  "import os, sys\n"
+                  "open(os.environ['ROLLOVER_MARK'], 'w').write('used')\n"
+                  "args = sys.argv[1:]\n"
+                  "out = []\n"
+                  "i = 0\n"
+                  "while i < len(args):\n"
+                  "    if args[i] == '-i':\n"
+                  "        out += ['-i', os.environ['ROLLOVER_LEAF_P12']]\n"
+                  "        i += 2\n"
+                  "    else:\n"
+                  "        out.append(args[i])\n"
+                  "        i += 1\n"
+                  "os.execv(os.environ['ROLLOVER_REAL_PK12UTIL'], ['pk12util'] + out)\n");
+        QVERIFY(QFile::setPermissions(QDir(wrapperDir).filePath("pk12util"),
+                                      QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+
+        const QString wrapperMark = dir.filePath("wrapper-used");
+        const QByteArray oldPath = qgetenv("PATH");
+        const QByteArray oldLeaf = qgetenv("ROLLOVER_LEAF_P12");
+        const QByteArray oldReal = qgetenv("ROLLOVER_REAL_PK12UTIL");
+        const QByteArray oldMark = qgetenv("ROLLOVER_MARK");
+        qputenv("PATH", wrapperDir.toLocal8Bit() + ":" + oldPath);
+        qputenv("ROLLOVER_LEAF_P12", leafP12.toLocal8Bit());
+        qputenv("ROLLOVER_REAL_PK12UTIL", realPk12util.toLocal8Bit());
+        qputenv("ROLLOVER_MARK", wrapperMark.toLocal8Bit());
+        bool needsPassword = false;
+        QString nickname;
+        const QString importError = Signer::importCertificate(chainP12, QStringLiteral("rollpass"), &needsPassword, &nickname);
+        qputenv("PATH", oldPath);
+        if (oldLeaf.isEmpty())
+            qunsetenv("ROLLOVER_LEAF_P12");
+        else
+            qputenv("ROLLOVER_LEAF_P12", oldLeaf);
+        if (oldReal.isEmpty())
+            qunsetenv("ROLLOVER_REAL_PK12UTIL");
+        else
+            qputenv("ROLLOVER_REAL_PK12UTIL", oldReal);
+        if (oldMark.isEmpty())
+            qunsetenv("ROLLOVER_MARK");
+        else
+            qputenv("ROLLOVER_MARK", oldMark);
+        QVERIFY2(importError.isEmpty(), qPrintable(importError));
+        QVERIFY(!nickname.isEmpty());
+        QVERIFY(QFile::exists(wrapperMark));
+
+        const QString source = dir.filePath("lease.pdf");
+        writeBasePdf(source, 1);
+        const QString target = dir.filePath("signed.pdf");
+        QVERIFY(Stamper::stamp(source, target, {}).error.isEmpty());
+        const Signer::Result result = Signer::sign(target, nickname);
+        if (!result.ok)
+            QFAIL(qPrintable(QStringLiteral("signing failed: %1").arg(result.error)));
+
+        const QString dumpDir = dir.filePath("dump");
+        QVERIFY(QDir().mkpath(dumpDir));
+        QByteArray dumpError;
+        QVERIFY2(runProcess("pdfsig", {"-dump", "-nocert", target}, nullptr, &dumpError, dumpDir),
+                 dumpError.constData());
+        const QString signatureBlob = QDir(dumpDir).filePath(QFileInfo(target).fileName() + QStringLiteral(".sig0"));
+        QVERIFY(QFile::exists(signatureBlob));
+        QByteArray certificates, opensslError;
+        QVERIFY2(runProcess("openssl", {"pkcs7", "-inform", "DER", "-in", signatureBlob, "-print_certs", "-noout"},
+                            &certificates, &opensslError),
+                 opensslError.constData());
+
+        int subjects = 0;
+        for (const QByteArray &line : certificates.split('\n'))
+            if (line.startsWith("subject="))
+                ++subjects;
+        QCOMPARE(subjects, 2);  // the leaf and the rollover intermediate, not the root
+        QVERIFY(certificates.contains("CN=Rollover Leaf"));
     }
 };
 

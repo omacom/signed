@@ -21,6 +21,7 @@
 // NSS's headers have a `slots` member and Qt has a `slots` macro.
 #undef slots
 #include <cert.h>
+#include <keyhi.h>
 #include <nss.h>
 #include <p12.h>
 #include <pk11pub.h>
@@ -175,7 +176,18 @@ bool isSelfSigned(const QByteArray &der) {
     CERTCertificate *certificate = CERT_NewTempCertificate(CERT_GetDefaultCertDB(), &item, nullptr, PR_FALSE, PR_TRUE);
     if (!certificate)
         return false;
-    const bool selfSigned = CERT_CompareName(&certificate->subject, &certificate->issuer) == SECEqual;
+    bool selfSigned = CERT_CompareName(&certificate->subject, &certificate->issuer) == SECEqual;
+    if (selfSigned) {
+        // Matching names are not enough: during a CA key rollover an
+        // intermediate can have the same subject and issuer as the old CA
+        // while being signed by the old key. Verify the self-signature before
+        // treating it as a root and leaving it out of the seal.
+        SECKEYPublicKey *publicKey = CERT_ExtractPublicKey(certificate);
+        selfSigned = publicKey &&
+                     CERT_VerifySignedDataWithPublicKey(&certificate->signatureWrap, publicKey, nullptr) == SECSuccess;
+        if (publicKey)
+            SECKEY_DestroyPublicKey(publicKey);
+    }
     CERT_DestroyCertificate(certificate);
     return selfSigned;
 }

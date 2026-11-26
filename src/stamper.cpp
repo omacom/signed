@@ -41,10 +41,23 @@ struct Geometry {
     }
 };
 
+// QPDF's numeric conversion follows the process locale in some versions,
+// while PDF numbers always use a dot. Parse the printed token with Qt's
+// C-locale conversion so a page such as 595.28 x 841.89 stays fractional on
+// a desktop whose decimal separator is a comma.
+double number(const QPDFObjectHandle &value) {
+    bool ok = false;
+    const double parsed = QByteArray(value.unparse().c_str()).toDouble(&ok);
+    return ok ? parsed : value.getNumericValue();
+}
+
 QPDFObjectHandle::Rectangle rectangle(QPDFObjectHandle box) {
-    if (box.isRectangle()) {
-        const auto r = box.getArrayAsRectangle();
-        return {std::min(r.llx, r.urx), std::min(r.lly, r.ury), std::max(r.llx, r.urx), std::max(r.lly, r.ury)};
+    if (box.isArray() && box.getArrayNItems() == 4) {
+        const double llx = number(box.getArrayItem(0));
+        const double lly = number(box.getArrayItem(1));
+        const double urx = number(box.getArrayItem(2));
+        const double ury = number(box.getArrayItem(3));
+        return {std::min(llx, urx), std::min(lly, ury), std::max(llx, urx), std::max(lly, ury)};
     }
     return {0, 0, 612, 792};
 }
