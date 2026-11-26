@@ -1,10 +1,12 @@
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QPainter>
 
 #include <algorithm>
 #include <QPdfWriter>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -37,19 +39,33 @@ void writeBasePdf(const QString &path) {
 class PasswordTests : public QObject {
     Q_OBJECT
 
-    QTemporaryDir m_data;
-    QTemporaryDir m_config;
+    QTemporaryDir m_tempData;
+    QTemporaryDir m_tempConfig;
+    QString m_dataHome;
+    QString m_configHome;
 
 private slots:
     void initTestCase() {
-        QVERIFY(m_data.isValid());
-        QVERIFY(m_config.isValid());
-        QVERIFY(QDir(m_data.path()).mkpath("data"));
-        qputenv("XDG_DATA_HOME", QDir(m_data.path()).filePath("data").toLocal8Bit());
-        qputenv("XDG_CONFIG_HOME", m_config.path().toLocal8Bit());
+        const QByteArray inheritedData = qgetenv("SIGNED_TEST_DATA_HOME");
+        const QByteArray inheritedConfig = qgetenv("SIGNED_TEST_CONFIG_HOME");
+        if (!inheritedData.isEmpty() && !inheritedConfig.isEmpty()) {
+            m_dataHome = QString::fromLocal8Bit(inheritedData);
+            m_configHome = QString::fromLocal8Bit(inheritedConfig);
+            QVERIFY(QFileInfo(m_dataHome).isDir());
+            QVERIFY(QFileInfo(m_configHome).isDir());
+        } else {
+            QVERIFY(m_tempData.isValid());
+            QVERIFY(m_tempConfig.isValid());
+            m_dataHome = QDir(m_tempData.path()).filePath("data");
+            m_configHome = m_tempConfig.path();
+            QVERIFY(QDir().mkpath(m_dataHome));
+        }
+        qputenv("XDG_DATA_HOME", m_dataHome.toLocal8Bit());
+        qputenv("XDG_CONFIG_HOME", m_configHome.toLocal8Bit());
 
         QSettings settings;
-        settings.setValue("certificateStore/passwordProtected", true);
+        if (!settings.contains("certificateStore/passwordProtected"))
+            settings.setValue("certificateStore/passwordProtected", true);
     }
 
     void protectedStoreSignsWithPassword() {
@@ -154,6 +170,71 @@ private slots:
         std::unique_ptr<Poppler::Document> document = Poppler::Document::load(target);
         QVERIFY(document);
         QCOMPARE(document->signatures().size(), 1);
+    }
+
+    void reopeningInANewProcess() {
+        if (!qgetenv("SIGNED_TEST_REOPEN").isEmpty())
+            QSKIP("this is the child process");
+        if (Signer::storeState() != Signer::StoreState::Protected)
+            QSKIP("requires the protected store from the earlier tests");
+
+        // A new process must be able to rebuild a missing public index once
+        // the store password is entered.
+        const QString index = QDir(m_dataHome).filePath(QStringLiteral("signed/certificates.json"));
+        QFile::remove(index);
+        QVERIFY(!QFileInfo::exists(index));
+
+        QProcess child;
+        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+        environment.insert(QStringLiteral("SIGNED_TEST_REOPEN"), QStringLiteral("1"));
+        environment.insert(QStringLiteral("SIGNED_TEST_DATA_HOME"), m_dataHome);
+        environment.insert(QStringLiteral("SIGNED_TEST_CONFIG_HOME"), m_configHome);
+        environment.insert(QStringLiteral("SIGNED_TEST_PASSWORD"), QStringLiteral("a long enough password"));
+        child.setProcessEnvironment(environment);
+        child.start(QCoreApplication::applicationFilePath(), {QStringLiteral("reopenProtectedStore")});
+        QVERIFY(child.waitForFinished(30000));
+        const QByteArray output = child.readAllStandardOutput() + child.readAllStandardError();
+        QVERIFY2(child.exitStatus() == QProcess::NormalExit && child.exitCode() == 0, output.constData());
+    }
+
+    void reopenProtectedStore() {
+        if (qgetenv("SIGNED_TEST_REOPEN").isEmpty())
+            QSKIP("only runs in the reopened process");
+
+        const QString password = QString::fromLocal8Bit(qgetenv("SIGNED_TEST_PASSWORD"));
+        QCOMPARE(Signer::storeState(), Signer::StoreState::Protected);
+        QCOMPARE(Signer::unlock(password), Signer::UnlockResult::Ok);
+
+        const QList<Signer::Certificate> certificates = Signer::certificates();
+        QVERIFY(!certificates.isEmpty());
+        const QString nickname = certificates.first().nickname;
+
+        QTemporaryDir dir;
+        const QString source = dir.filePath("lease.pdf");
+        const QString target = dir.filePath("signed.pdf");
+        writeBasePdf(source);
+        QVERIFY(Stamper::stamp(source, target, {}).error.isEmpty());
+        const Signer::Result result = Signer::sign(target, nickname);
+        Signer::lock();
+        QVERIFY2(result.ok, qPrintable(result.error));
+
+        std::unique_ptr<Poppler::Document> document = Poppler::Document::load(target);
+        QVERIFY(document);
+        QCOMPARE(document->signatures().size(), 1);
+
+        // The store is locked again for the next operation.
+        const QString secondTarget = dir.filePath("second.pdf");
+        QVERIFY(Stamper::stamp(source, secondTarget, {}).error.isEmpty());
+        QVERIFY(!Signer::sign(secondTarget, nickname).ok);
+
+        // Disabling the setting does not turn off protection for an existing
+        // store.
+        QSettings settings;
+        settings.setValue("certificateStore/passwordProtected", false);
+        Backend backend(nullptr, nullptr, nullptr, &settings);
+        QVERIFY(!backend.passwordProtectionEnabled());
+        QCOMPARE(Signer::storeState(), Signer::StoreState::Protected);
+        QCOMPARE(backend.certificateStoreState(), QStringLiteral("protected"));
     }
 };
 

@@ -44,7 +44,15 @@ Backend::Backend(FilePicker *picker, PageProvider *pages, SignatureLibrary *sign
             import(url.toLocalFile(), QString(), m_pendingImportStorePassword);
         });
         connect(m_picker, &FilePicker::saveSelected, this, [this](const QUrl &url) { saveTo(url.toLocalFile()); });
-        connect(m_picker, &FilePicker::failed, this, &Backend::setNotice);
+        connect(m_picker, &FilePicker::cancelled, this, [this] {
+            m_pendingImport.clear();
+            m_pendingImportStorePassword.clear();
+        });
+        connect(m_picker, &FilePicker::failed, this, [this](const QString &message) {
+            m_pendingImport.clear();
+            m_pendingImportStorePassword.clear();
+            setNotice(message);
+        });
     }
 }
 
@@ -437,9 +445,13 @@ void Backend::import(const QString &path, const QString &filePassword, const QSt
         m_pendingImport = path;
         emit certificateImportNeedsPassword();
     } else {
-        // A wrong password can be tried again.
+        // A non-empty file password means the user can retry in the file
+        // password dialog. Otherwise the import is over; drop the store
+        // password rather than keeping it in memory.
         if (!filePassword.isEmpty())
             m_pendingImport = path;
+        else
+            m_pendingImportStorePassword.clear();
         emit certificateImportFailed(error);
     }
 }

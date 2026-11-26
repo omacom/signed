@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLockFile>
 #include <QProcess>
 #include <QSaveFile>
 #include <QStandardPaths>
@@ -161,8 +162,9 @@ QList<Certificate> readIndex() {
     return certificates;
 }
 
-void writeIndex(const QList<Certificate> &certificates) {
-    QDir().mkpath(QFileInfo(indexPath()).absolutePath());
+bool writeIndex(const QList<Certificate> &certificates) {
+    if (!QDir().mkpath(QFileInfo(indexPath()).absolutePath()))
+        return false;
     QJsonArray entries;
     for (const Certificate &certificate : certificates) {
         entries.append(QJsonObject{
@@ -173,11 +175,34 @@ void writeIndex(const QList<Certificate> &certificates) {
     }
     QSaveFile file(indexPath());
     if (!file.open(QIODevice::WriteOnly))
-        return;
+        return false;
     const QJsonObject root{{QStringLiteral("version"), 1}, {QStringLiteral("certificates"), entries}};
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
-    file.commit();
+    const QByteArray json = QJsonDocument(root).toJson(QJsonDocument::Compact);
+    if (file.write(json) != json.size())
+        return false;
+    return file.commit();
 }
+
+// Serialize read-modify-write updates of the certificate index. The NSS
+// database has its own locking; this covers the metadata file that protected
+// stores use to list certificates while they are locked.
+class IndexLock {
+public:
+    IndexLock() {
+        QDir().mkpath(QFileInfo(indexPath()).absolutePath());
+        m_lock.setStaleLockTime(10000);
+        m_locked = m_lock.tryLock(2000);
+    }
+    ~IndexLock() {
+        if (m_locked)
+            m_lock.unlock();
+    }
+    bool isLocked() const { return m_locked; }
+
+private:
+    QLockFile m_lock{indexPath() + QStringLiteral(".lock")};
+    bool m_locked = false;
+};
 
 QList<Certificate> certificatesFromDatabase() {
     if (!ensureBackend(false, {}).isEmpty())
@@ -194,27 +219,36 @@ QList<Certificate> certificatesFromDatabase() {
     return out;
 }
 
-QList<Certificate> refreshCertificates() {
+QList<Certificate> refreshCertificates(bool *written = nullptr) {
+    IndexLock lock;
     const QList<Certificate> certificates = certificatesFromDatabase();
-    writeIndex(certificates);
+    const bool saved = lock.isLocked() && writeIndex(certificates);
+    if (written)
+        *written = saved;
     return certificates;
 }
 
-void rememberCertificate(const Certificate &certificate) {
+bool rememberCertificate(const Certificate &certificate) {
+    IndexLock lock;
+    if (!lock.isLocked())
+        return false;
     QList<Certificate> certificates = readIndex();
     certificates.erase(std::remove_if(certificates.begin(), certificates.end(),
                                       [&](const Certificate &c) { return c.nickname == certificate.nickname; }),
                        certificates.end());
     certificates.append(certificate);
-    writeIndex(certificates);
+    return writeIndex(certificates);
 }
 
-void forgetCertificate(const QString &nickname) {
+bool forgetCertificate(const QString &nickname) {
+    IndexLock lock;
+    if (!lock.isLocked())
+        return false;
     QList<Certificate> certificates = readIndex();
     certificates.erase(std::remove_if(certificates.begin(), certificates.end(),
                                       [&](const Certificate &c) { return c.nickname == nickname; }),
                        certificates.end());
-    writeIndex(certificates);
+    return writeIndex(certificates);
 }
 
 }
@@ -259,8 +293,12 @@ UnlockResult unlock(const QString &password, QString *error) {
     }
     const SECStatus status = PK11_CheckUserPassword(slot, password.toUtf8().constData());
     PK11_FreeSlot(slot);
-    if (status == SECSuccess)
+    if (status == SECSuccess) {
+        // Rebuild the public metadata while the database is open. This also
+        // repairs an index that was lost or could not be written earlier.
+        refreshCertificates();
         return UnlockResult::Ok;
+    }
     return UnlockResult::WrongPassword;
 }
 
@@ -334,7 +372,24 @@ QString createCertificate(const QString &name, const QString &organization, QStr
         return tr("the certificate couldn't be created: %1").arg(output);
     }
 
-    rememberCertificate({nick, commonName, org});
+    if (!rememberCertificate({nick, commonName, org})) {
+        bool written = false;
+        if (protectedStore) {
+            if (unlock(storePassword) == UnlockResult::Ok) {
+                refreshCertificates(&written);
+                lock();
+            }
+        } else {
+            refreshCertificates(&written);
+        }
+        if (!written) {
+            // The certificate database changed but the selection list could
+            // not be updated. Remove the new certificate so the operation is
+            // all-or-nothing, and report the failure.
+            removeCertificate(nick, storePassword);
+            return tr("the certificate couldn't be created.");
+        }
+    }
     if (nickname)
         *nickname = nick;
     return {};
